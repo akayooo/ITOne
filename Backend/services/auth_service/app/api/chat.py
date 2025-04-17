@@ -3,11 +3,11 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_active_user
-from app.database import get_db
-from app.models.chat import ChatHistory
-from app.models.user import User
-from app.schemas.chat import ChatHistoryCreate, ChatHistoryResponse
+from services.auth_service.app.api.auth import get_current_active_user
+from services.auth_service.app.database import get_db
+from services.auth_service.app.models.chat import ChatHistory
+from services.auth_service.app.models.user import User
+from services.auth_service.app.schemas.chat import ChatHistoryCreate, ChatHistoryResponse
 
 router = APIRouter()
 

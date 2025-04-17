@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import DateTime
 
-from app.database import Base
+from services.auth_service.app.database import Base
 
 
 class ChatHistory(Base):

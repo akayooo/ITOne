@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from app.core.security import (
+from services.auth_service.app.core.security import (
     verify_password, 
     get_password_hash, 
     create_access_token, 
@@ -14,9 +14,9 @@ from app.core.security import (
     ALGORITHM, 
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.database import get_db
-from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, TokenData, Token
+from services.auth_service.app.database import get_db
+from services.auth_service.app.models.user import User
+from services.auth_service.app.schemas.user import UserCreate, UserResponse, TokenData, Token
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")

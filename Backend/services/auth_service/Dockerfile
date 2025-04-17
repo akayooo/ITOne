@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Initialize the database
-RUN python -c "from app.database import Base, engine; Base.metadata.create_all(bind=engine)"
+RUN python -c "from services.auth_service.app.database import Base, engine; Base.metadata.create_all(bind=engine)"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
