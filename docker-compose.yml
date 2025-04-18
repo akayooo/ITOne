@@ -1,35 +1,51 @@
+version: '3.8'
+
 services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: pupik-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Backend:/app
+    networks:
+      - pupik-network
+
   # Backend authentication service
   auth-service:
     build:
       context: ./Backend/services/auth_service
+      dockerfile: Dockerfile
+    container_name: pupik-auth-service
     ports:
-      - "8000:8000"
-    environment:
-      - SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
-      - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - DATABASE_URL=sqlite:///./auth.db
+      - "8001:8000"
     volumes:
-      - auth_data:/app/auth.db
+      - ./Backend/services/auth_service:/app
+    environment:
+      - DATABASE_URL=sqlite:///./auth.db
     networks:
-      - app-network
+      - pupik-network
 
   # Frontend React application
   frontend:
     build:
-      context: ./frontend
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: pupik-frontend
     ports:
-      - "80:80"
+      - "3000:80"
     depends_on:
-      - auth-service
+      - backend
     volumes:
-      - ./frontend/src:/app/src
+      - ./Frontend/public:/app/public
     networks:
-      - app-network
+      - pupik-network
 
 volumes:
   auth_data:
 
 networks:
-  app-network: 
+  pupik-network:
+    driver: bridge 
