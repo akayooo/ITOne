@@ -10,7 +10,7 @@ import "bpmn-js/dist/assets/bpmn-font/css/bpmn.css"
 
 export function BpmnEditor() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { diagram, setModeler, resetDiagram, saveDiagram, modeler } = useBpmnStore()
+  const { diagram, setModeler, resetDiagram, saveDiagram } = useBpmnStore()
   const { toast } = useToast()
 
   useEffect(() => {

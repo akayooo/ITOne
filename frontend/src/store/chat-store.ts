@@ -41,7 +41,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadChatHistory: async () => {
     set({ isLoading: true, error: null })
     try {
-      const messages = await getChatHistory()
+      const token = localStorage.getItem("token")
+      if (!token) {
+        set({ 
+          error: "Authentication required",
+          isLoading: false
+        })
+        return
+      }
+      
+      const messages = await getChatHistory(token)
       set({ messages, isLoading: false })
     } catch (error) {
       set({ 

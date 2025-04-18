@@ -21,8 +21,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (credentials) => {
     set({ isLoading: true, error: null })
     try {
-      await login(credentials)
-      const user = await getCurrentUser()
+      const response = await login(credentials)
+      const token = response.access_token
+      localStorage.setItem("token", token)
+      const user = await getCurrentUser(token)
       set({ user, isAuthenticated: true, isLoading: false })
     } catch (error) {
       set({ 
@@ -60,7 +62,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     
     set({ isLoading: true })
     try {
-      const user = await getCurrentUser()
+      const user = await getCurrentUser(token)
       set({ user, isAuthenticated: true, isLoading: false })
     } catch (error) {
       logout()

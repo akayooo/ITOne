@@ -14,8 +14,6 @@ export function ChatInterface() {
     sendMessage, 
     isLoading 
   } = useChatStore()
-  
-  const [botResponse, setBotResponse] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,7 +24,6 @@ export function ChatInterface() {
     // In a real app, this would call an AI model API
     const demoResponse = `You sent: "${currentMessage}"\n\nThis is a demo response from the bot. In a real application, this would connect to an AI model that could help with your BPMN diagram.`
     
-    setBotResponse(demoResponse)
     await sendMessage(currentMessage, demoResponse)
   }
 
@@ -54,11 +51,11 @@ export function ChatInterface() {
                       You
                     </div>
                     <div className="mt-1 whitespace-pre-wrap">
-                      {message.message}
+                      {message.content || message.message}
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground mt-1">
-                    {formatDate(message.created_at)}
+                    {formatDate(message.timestamp || message.created_at || new Date().toString())}
                   </span>
                 </div>
                 
@@ -68,7 +65,7 @@ export function ChatInterface() {
                       AI Assistant
                     </div>
                     <div className="mt-1 whitespace-pre-wrap">
-                      {message.response}
+                      {message.response || "No response yet"}
                     </div>
                   </div>
                 </div>
