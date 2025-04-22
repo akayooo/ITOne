@@ -18,5 +18,5 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationship with ChatHistory model
-    chat_history = relationship("ChatHistory", back_populates="user") 
+    chat_history = relationship("ChatHistory", back_populates="user")
+    chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan") 

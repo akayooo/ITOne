@@ -1,8 +1,18 @@
 import { useState, useRef, useEffect } from "react"
+import { useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { SendIcon, MicIcon, XIcon } from "lucide-react"
+import { SendIcon, MicIcon, XIcon, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { ChatHistoryEntry, chatApi } from "@/lib/api"
+import { useAuthStore } from "@/lib/auth"
+
+// Add TypeScript declaration for webkitAudioContext
+declare global {
+  interface Window {
+    webkitAudioContext: typeof AudioContext
+  }
+}
 
 interface Message {
   id: string
@@ -12,14 +22,11 @@ interface Message {
 }
 
 export function BpmnChat() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Здравствуйте! Это демо-версия чата для создания BPMN диаграмм. Сейчас работает только интерфейс без подключения к backend.',
-      timestamp: new Date()
-    }
-  ])
+  const location = useLocation()
+  const { user } = useAuthStore()
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [speechStatus, setSpeechStatus] = useState('')
@@ -31,29 +38,79 @@ export function BpmnChat() {
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null)
 
-  // Demo response function
-  const addDemoResponse = () => {
-    setTimeout(() => {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: 'Это демо-версия. Backend функционал в разработке. Спасибо за тестирование!',
-        timestamp: new Date()
-      }
+  // Get chat ID from URL
+  const params = new URLSearchParams(location.search)
+  const chatId = params.get('chatId') ? parseInt(params.get('chatId')!) : null
+  
+  // Load chat history when chat ID changes
+  useEffect(() => {
+    if (chatId) {
+      loadChatHistory(chatId)
+    } else {
+      // Clear messages if no chat is selected
+      setMessages([
+        {
+          id: '1',
+          role: 'assistant',
+          content: 'Выберите существующий чат или создайте новый с помощью кнопки "+" в боковой панели.',
+          timestamp: new Date()
+        }
+      ])
+    }
+  }, [chatId])
+  
+  // Load chat history
+  const loadChatHistory = async (chatId: number) => {
+    if (!chatId || !user?.id) return
+    
+    setIsLoadingHistory(true)
+    try {
+      const history = await chatApi.getChatHistory(chatId)
       
-      setMessages(prev => [...prev, newMessage])
-    }, 1000)
+      // Convert history to messages format
+      const formattedMessages = history.map(entry => [
+        {
+          id: `user-${entry.id}`,
+          role: 'user' as const,
+          content: entry.message,
+          timestamp: new Date(entry.created_at)
+        },
+        {
+          id: `assistant-${entry.id}`,
+          role: 'assistant' as const,
+          content: entry.response,
+          timestamp: new Date(entry.created_at)
+        }
+      ]).flat()
+      
+      // Sort by timestamp (oldest first)
+      formattedMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+      
+      setMessages(formattedMessages)
+    } catch (error) {
+      console.error("Failed to load chat history:", error)
+      setMessages([
+        {
+          id: 'error',
+          role: 'assistant',
+          content: 'Не удалось загрузить историю чата.',
+          timestamp: new Date()
+        }
+      ])
+    } finally {
+      setIsLoadingHistory(false)
+    }
   }
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (input.trim() === '') return
+    if (input.trim() === '' || !chatId || !user?.id) return
     
-    // Add user message
+    // Add user message to UI immediately
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       role: 'user',
       content: input,
       timestamp: new Date()
@@ -61,9 +118,39 @@ export function BpmnChat() {
     
     setMessages(prev => [...prev, userMessage])
     setInput('')
+    setIsLoading(true)
     
-    // Add demo response
-    addDemoResponse()
+    try {
+      // Demo response (replace with real API call)
+      const response = "Это демо-версия. Backend функционал в разработке. Спасибо за тестирование!"
+      
+      // Add assistant message to UI
+      const assistantMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: response,
+        timestamp: new Date()
+      }
+      
+      setMessages(prev => [...prev, assistantMessage])
+      
+      // Save the message exchange to the database
+      await chatApi.saveChatEntry({
+        user_id: user.id,
+        chat_id: chatId,
+        message: input.trim(),
+        response: response
+      })
+    } catch (error) {
+      console.error("Error processing message:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обработать сообщение",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   // Speech to text functions
@@ -211,29 +298,42 @@ export function BpmnChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Check if current user can interact with this chat
+  const canInteract = Boolean(chatId && user?.id)
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(message => (
-          <div
-            key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
+        {isLoadingHistory ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : messages.length > 0 ? (
+          messages.map(message => (
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                message.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
-              <div className="text-xs opacity-70 mt-1">
-                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted'
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                <div className="text-xs opacity-70 mt-1">
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
             </div>
+          ))
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            {!chatId ? 'Выберите чат' : 'Нет сообщений'}
           </div>
-        ))}
+        )}
         
         <div ref={messagesEndRef} />
       </div>
@@ -251,24 +351,34 @@ export function BpmnChat() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Напишите сообщение..."
+            placeholder={canInteract ? "Введите сообщение..." : "Выберите чат для начала общения"}
             className="flex-1"
+            disabled={!canInteract || isLoading}
           />
+          
           <Button 
             type="button" 
-            size="icon" 
-            variant={isRecording ? "destructive" : "outline"}
+            size="icon"
+            variant="outline"
             onClick={toggleRecording}
+            disabled={!canInteract || isLoading}
+            className={isRecording ? 'bg-red-100 hover:bg-red-200 text-red-500' : ''}
           >
-            {isRecording ? <XIcon className="h-4 w-4" /> : <MicIcon className="h-4 w-4" />}
+            {isRecording ? <XIcon className="h-5 w-5" /> : <MicIcon className="h-5 w-5" />}
           </Button>
-          <Button type="submit" size="icon">
-            <SendIcon className="h-4 w-4" />
+          
+          <Button 
+            type="submit" 
+            size="icon"
+            disabled={!input.trim() || !canInteract || isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <SendIcon className="h-5 w-5" />
+            )}
           </Button>
         </form>
-        <div className="mt-2 text-xs text-muted-foreground">
-          Это демо-версия чата. Напишите сообщение или используйте голосовой ввод.
-        </div>
       </div>
     </div>
   )

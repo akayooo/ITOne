@@ -1,2 +1,2 @@
-from services.auth_service.app.schemas.user import UserBase, UserCreate, UserResponse, UserInDB, Token, TokenData
-from services.auth_service.app.schemas.chat import ChatHistoryBase, ChatHistoryCreate, ChatHistoryResponse 
+from services.auth_service.app.schemas.user import User, UserCreate, UserUpdate
+from services.auth_service.app.schemas.chat import ChatCreate, ChatResponse, ChatUpdate, ChatHistoryCreate, ChatHistoryResponse 

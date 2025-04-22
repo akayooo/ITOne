@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Outlet, Link, useNavigate } from "react-router-dom"
+import { Outlet, Link, useNavigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
@@ -9,18 +9,42 @@ import {
   MessageSquare, 
   Plus, 
   Settings, 
-  FileSpreadsheet 
+  FileSpreadsheet,
+  Loader2
 } from "lucide-react"
+import { Chat, chatApi } from "@/lib/api"
 
 export function ChatLayout() {
   const { user, logout } = useAuthStore()
   const { toast } = useToast()
   const navigate = useNavigate()
-  const [projects, setProjects] = useState([
-    { id: 1, name: "Бизнес-процесс продаж", date: "20.04.2025" },
-    { id: 2, name: "Процесс обработки заказов", date: "19.04.2025" },
-    { id: 3, name: "Платежный процесс", date: "18.04.2025" },
-  ])
+  const location = useLocation()
+  const [isLoading, setIsLoading] = useState(true)
+  const [chats, setChats] = useState<Chat[]>([])
+  const [isCreatingChat, setIsCreatingChat] = useState(false)
+
+  // Load chats when component mounts
+  useEffect(() => {
+    fetchChats()
+  }, [])
+
+  const fetchChats = async () => {
+    setIsLoading(true)
+    try {
+      const fetchedChats = await chatApi.getChats()
+      setChats(fetchedChats)
+      console.log("Fetched chats:", fetchedChats)
+    } catch (error) {
+      console.error("Failed to fetch chats:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить список чатов",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleLogout = () => {
     logout()
@@ -31,17 +55,40 @@ export function ChatLayout() {
     navigate("/login")
   }
 
-  const handleNewProject = () => {
-    const newProject = {
-      id: projects.length + 1,
-      name: `Новый проект ${projects.length + 1}`,
-      date: new Date().toLocaleDateString("ru-RU")
+  const handleNewChat = async () => {
+    if (isCreatingChat) return
+    
+    setIsCreatingChat(true)
+    try {
+      if (!user?.id) {
+        throw new Error("Пользователь не авторизован")
+      }
+      
+      const newChat = await chatApi.createChat({
+        user_id: user.id,
+        name: `Новый чат ${chats.length + 1}`
+      })
+      
+      if (newChat) {
+        setChats([newChat, ...chats])
+        navigate(`/chat?chatId=${newChat.id}`)
+        toast({
+          title: "Чат создан",
+          description: `Чат "${newChat.name}" успешно создан`,
+        })
+      } else {
+        throw new Error("Не удалось создать чат")
+      }
+    } catch (error) {
+      console.error("Failed to create chat:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать новый чат",
+        variant: "destructive"
+      })
+    } finally {
+      setIsCreatingChat(false)
     }
-    setProjects([newProject, ...projects])
-    toast({
-      title: "Проект создан",
-      description: `Проект "${newProject.name}" успешно создан`,
-    })
   }
 
   return (
@@ -71,33 +118,59 @@ export function ChatLayout() {
         {/* Navigation */}
         <div className="p-2">
           <div className="flex items-center justify-between px-2 py-1.5">
-            <div className="text-sm font-medium">Проекты</div>
+            <div className="text-sm font-medium">Чаты</div>
             <Button 
               variant="ghost" 
               size="icon" 
               className="h-7 w-7" 
-              onClick={handleNewProject}
-              title="Новый проект"
+              onClick={handleNewChat}
+              disabled={isCreatingChat}
+              title="Новый чат"
             >
-              <Plus className="h-4 w-4" />
+              {isCreatingChat ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
             </Button>
           </div>
           
-          {/* Projects list */}
-          <div className="mt-2 space-y-1">
-            {projects.map((project) => (
-              <Link
-                key={project.id}
-                to={`/chat?project=${project.id}`}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent cursor-pointer"
-              >
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <div className="flex-1 truncate">
-                  <div className="truncate">{project.name}</div>
-                  <div className="text-xs text-muted-foreground">{project.date}</div>
-                </div>
-              </Link>
-            ))}
+          {/* Chats list */}
+          <div className="mt-2 space-y-1 max-h-[calc(100vh-12rem)] overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : chats.length > 0 ? (
+              chats.map((chat) => {
+                // Extract chatId from URL if present
+                const params = new URLSearchParams(location.search)
+                const currentChatId = params.get("chatId")
+                const isActive = currentChatId === chat.id.toString()
+                
+                return (
+                  <Link
+                    key={chat.id}
+                    to={`/chat?chatId=${chat.id}`}
+                    className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent cursor-pointer ${
+                      isActive ? "bg-accent" : ""
+                    }`}
+                  >
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1 truncate">
+                      <div className="truncate">{chat.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(chat.created_at).toLocaleDateString("ru-RU")}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                Нет доступных чатов
+              </div>
+            )}
           </div>
         </div>
         

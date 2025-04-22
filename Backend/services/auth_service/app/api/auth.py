@@ -15,14 +15,14 @@ from services.auth_service.app.core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from services.auth_service.app.database import get_db
-from services.auth_service.app.models.user import User
-from services.auth_service.app.schemas.user import UserCreate, UserResponse, TokenData, Token
+from services.auth_service.app.models.user import User as UserModel
+from services.auth_service.app.schemas.user import UserCreate, User as UserSchema, TokenData, Token
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def get_user(db: Session, username: str):
-    return db.query(User).filter(User.username == username).first()
+    return db.query(UserModel).filter(UserModel.username == username).first()
 
 def authenticate_user(db: Session, username: str, password: str):
     user = get_user(db, username)
@@ -57,13 +57,13 @@ async def get_current_user(
     return user
 
 async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[UserModel, Depends(get_current_user)]
 ):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=UserSchema)
 def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     db_user = get_user(db, user_data.username)
     if db_user:
@@ -73,7 +73,7 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
         )
     
     hashed_password = get_password_hash(user_data.password)
-    db_user = User(
+    db_user = UserModel(
         username=user_data.username,
         email=user_data.email,
         hashed_password=hashed_password,
@@ -106,6 +106,6 @@ def login_for_access_token(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/users/me", response_model=UserResponse)
-def read_users_me(current_user: Annotated[User, Depends(get_current_active_user)]):
+@router.get("/users/me", response_model=UserSchema)
+def read_users_me(current_user: Annotated[UserModel, Depends(get_current_active_user)]):
     return current_user 

@@ -13,16 +13,20 @@ class UserCreate(UserBase):
     password: str
 
 
-class UserResponse(UserBase):
+class User(UserBase):
     id: int
     disabled: bool = False
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-class UserInDB(UserResponse):
+class UserUpdate(UserBase):
+    password: Optional[str] = None
+
+
+class UserInDB(User):
     hashed_password: str
 
 

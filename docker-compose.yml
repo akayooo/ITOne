@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - auth-service
+    networks:
+      - app-network
+
+  auth-service:
+    build: ./Backend/services/auth_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Backend/services/auth_service:/app
+    environment:
+      - SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DATABASE_URL=sqlite:///./auth.db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge 
