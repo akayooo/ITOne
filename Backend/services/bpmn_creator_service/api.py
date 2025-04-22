@@ -1,31 +1,34 @@
 import os
-from openai import OpenAI
-from openai import APIConnectionError, RateLimitError, APIStatusError 
+import json
+import requests
 from typing import Union, Tuple, List, Optional 
+import logging
+
+# Configure logging
+logging = logging.getLogger(__name__)
 
 # --- Конфигурация ---
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-my_api_key = 'sk-767f7ecb76a744eeb20517f45a97d34f'
+CHUTES_API_URL = "https://llm.chutes.ai/v1/chat/completions"
+my_api_key = 'cpk_b9f646794b554414935934ec5a3513de.f78245306f06593ea49ef7bce2228c8e.kHJVJjyK8dtqB0oD2Ofv4AaME6MSnKDy'
 
-# Используем 'deepseek-chat' (V3) [1, 3] или 'deepseek-reasoner'
 def call_deepseek_api(
     prompt: str,
     api_key: str = my_api_key,
-    model_id: str = "deepseek-chat", 
+    model_id: str = "deepseek-ai/DeepSeek-V3-0324", 
     system_prompt: str = "Ты бизнез-консультант. Твоя цель - помощь в построении BPMN диаграммы по информации от пользователя.",
-    base_url: str = DEEPSEEK_BASE_URL,
+    base_url: str = CHUTES_API_URL,
     max_tokens: int = 1024, 
     temperature: float = 0.7 
     ) -> Union[str, None]:
     """
-    Отправляет текстовый запрос в DeepSeek API и возвращает ответ модели.
+    Отправляет текстовый запрос в Chutes API и возвращает ответ модели.
 
     Args:
-        user_prompt: Текстовый запрос пользователя.
-        api_key: Ваш API ключ DeepSeek. Если None, пытается взять из переменной окружения DEEPSEEK_API_KEY.
-        model_id: Идентификатор модели DeepSeek ('deepseek-chat' или 'deepseek-reasoner').
+        prompt: Текстовый запрос пользователя.
+        api_key: Ваш API ключ. Если None, используется значение по умолчанию.
+        model_id: Идентификатор модели (по умолчанию "deepseek-ai/DeepSeek-V3-0324").
         system_prompt: Системное сообщение для настройки поведения модели.
-        base_url: Базовый URL для API DeepSeek.
+        base_url: Базовый URL для API.
         max_tokens: Максимальное количество токенов для генерации в ответе.
         temperature: Параметр креативности ответа (0.0 - 1.0+).
 
@@ -33,12 +36,16 @@ def call_deepseek_api(
         Строку с ответом модели или None в случае ошибки.
     """
     if not api_key:
-        print("Ошибка: API ключ DeepSeek не предоставлен и не найден в переменной окружения DEEPSEEK_API_KEY.")
+        print("Ошибка: API ключ не предоставлен.")
         return None
 
     try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        promt_template = """
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        prompt_template = """
                 **Роль:** Ты — продвинутый ИИ-ассистент, специализирующийся на анализе и моделировании бизнес-процессов в формате BPMN.
 
                 **Задача:** Проанализируй следующее текстовое описание бизнес-процесса и преобразуй его в структурированный текст, используя синтаксис PiperFlow, который подходит для библиотеки Python `processpiper`. Твоя цель — максимально точно воспроизвести структуру и элементы, показанные в примере ниже.
@@ -79,39 +86,59 @@ def call_deepseek_api(
                 **Полный пример желаемого вывода (используй этот формат и стиль):**
                 """
         
-        final_promt = promt_template.format(user_prompt=prompt)
+        final_prompt = prompt_template.format(user_prompt=prompt)
+        
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": final_promt})
-
+        messages.append({"role": "user", "content": final_prompt})
+        
+        data = {
+            'model': model_id,
+            'messages': messages,
+            'stream': True,
+            'max_tokens': max_tokens,
+            'temperature': temperature
+        }
+        
         print(f"Отправка запроса к модели {model_id}...")
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=messages,
-            stream=False,
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-
-        if response.choices and response.choices[0].message:
-            result_text = response.choices[0].message.content
+        full_response = ""
+        response = requests.post(base_url, headers=headers, json=data, stream=True)
+        
+        for line in response.iter_lines():
+            if line:
+                try:
+                    line_text = line.decode('utf-8')
+                    if line_text.startswith('data: '):
+                        line_text = line_text[6:]
+                    if line_text.strip() and line_text != '[DONE]':
+                        parsed = json.loads(line_text)
+                        content = parsed.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                        if content:
+                            full_response += content
+                except json.JSONDecodeError:
+                    if line_text.strip() == '[DONE]':
+                        break
+                    continue
+                except Exception as e:
+                    print(f"Ошибка обработки ответа: {str(e)}")
+                    continue
+        
+        if full_response:
             print("Ответ получен.")
-            return result_text.strip()
+            return full_response.strip()
         else:
-            print("Ошибка: API вернуло неожиданный формат ответа.")
-            print(f"Полный ответ: {response}")
+            print("Ошибка: API вернуло пустой ответ.")
             return None
 
-
-    except APIConnectionError as e:
-        print(f"Ошибка соединения с API DeepSeek: {e}")
+    except requests.exceptions.ConnectionError as e:
+        print(f"Ошибка соединения с API: {e}")
         return None
-    except RateLimitError as e:
-        print(f"Ошибка: Превышен лимит запросов к API DeepSeek: {e}")
+    except requests.exceptions.Timeout as e:
+        print(f"Ошибка: Превышено время ожидания ответа от API: {e}")
         return None
-    except APIStatusError as e:
-        print(f"Ошибка статуса API DeepSeek: Статус {e.status_code}, Ответ: {e.response}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Ошибка HTTP: {e}")
         return None
     except Exception as e:
         print(f"Произошла непредвиденная ошибка: {e}")
