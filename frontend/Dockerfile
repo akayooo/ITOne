@@ -1,21 +1,20 @@
-FROM node:18-alpine as build
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json .
-COPY package-lock.json* .
-
+COPY package*.json ./
 RUN npm ci
 
 COPY . .
-
 RUN npm run build
 
-# Production stage
-FROM nginx:stable-alpine
+FROM nginx:alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the server.js (but we won't use it with nginx)
+COPY --from=builder /app/server.js /usr/share/nginx/
 
 EXPOSE 80
 
