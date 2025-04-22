@@ -29,6 +29,7 @@ class ChatHistory(Base):
     chat_id = Column(Integer, ForeignKey("chats.id"))
     message = Column(Text)
     response = Column(Text)
+    image = Column(Text, nullable=True)  # For storing base64 encoded BPMN diagram images
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationship with User model

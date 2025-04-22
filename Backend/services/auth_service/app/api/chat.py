@@ -157,6 +157,7 @@ def create_chat_entry(
             detail="Cannot add messages to chats of other users"
         )
     
+    # Create a new chat history entry with all fields including the optional image
     db_chat = ChatHistory(**chat_data.model_dump())
     db.add(db_chat)
     db.commit()

@@ -2,6 +2,7 @@ import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from services.auth_service.app.api import auth, chat
 from services.auth_service.app.database import Base, engine
+from services.bpmn_creator_service.router import router as bpmn_router
 
 # Create the database tables
 Base.metadata.create_all(bind=engine)
@@ -25,6 +26,7 @@ app.add_middleware(
 # Include routers directly
 app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(bpmn_router, prefix="/api/bpmn", tags=["bpmn"])
 
 @app.get("/")
 async def root():

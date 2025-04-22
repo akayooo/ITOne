@@ -28,6 +28,7 @@ class ChatResponse(ChatBase):
 class ChatHistoryBase(BaseModel):
     message: str
     response: str
+    image: Optional[str] = None  # Base64 encoded image for BPMN diagrams
 
 
 class ChatHistoryCreate(ChatHistoryBase):

@@ -19,6 +19,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  image?: string
 }
 
 export function BpmnChat() {
@@ -79,7 +80,8 @@ export function BpmnChat() {
           id: `assistant-${entry.id}`,
           role: 'assistant' as const,
           content: entry.response,
-          timestamp: new Date(entry.created_at)
+          timestamp: new Date(entry.created_at),
+          image: entry.image
         }
       ]).flat()
       
@@ -121,15 +123,74 @@ export function BpmnChat() {
     setIsLoading(true)
     
     try {
-      // Demo response (replace with real API call)
-      const response = "Это демо-версия. Backend функционал в разработке. Спасибо за тестирование!"
+      // Расширенное определение запросов на генерацию BPMN диаграмм
+      const userInput = input.toLowerCase();
+      const isBpmnRequest = 
+        // Явные запросы
+        userInput.includes('диаграмм') || 
+        userInput.includes('bpmn') ||
+        userInput.includes('схема процесса') ||
+        userInput.includes('схему процесса') ||
+        userInput.includes('бизнес-процесс') ||
+        userInput.includes('process diagram') ||
+        userInput.includes('нарисуй') ||
+        userInput.includes('построй') ||
+        userInput.includes('показать процесс') ||
+        userInput.includes('визуализируй') ||
+        // Неявные запросы на процессы
+        (userInput.includes('процесс') && 
+          (
+            userInput.includes('заказ') || 
+            userInput.includes('покупк') || 
+            userInput.includes('покупки') || 
+            userInput.includes('оформлени') || 
+            userInput.includes('регистрац') || 
+            userInput.includes('авторизаци') || 
+            userInput.includes('доставки') || 
+            userInput.includes('оплаты') ||
+            userInput.includes('учет') ||
+            userInput.includes('продаж')
+          )
+        );
+      
+      let response = '';
+      let imageData = '';
+      
+      // Если определили запрос на BPMN диаграмму, генерируем ее
+      if (isBpmnRequest) {
+        const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
+        
+        if (bpmnResult.success && bpmnResult.image) {
+          response = "Вот созданная BPMN диаграмма на основе вашего описания:";
+          imageData = bpmnResult.image;
+        } else {
+          response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+        }
+      } else {
+        // Отправляем запрос на генерацию BPMN диаграммы, даже если не распознали явно
+        // Это позволит модели самой решить, подходит ли запрос для создания диаграммы
+        try {
+          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
+          
+          if (bpmnResult.success && bpmnResult.image) {
+            response = "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
+            imageData = bpmnResult.image;
+          } else {
+            // Стандартный ответ для обычных сообщений
+            response = "Кажется ващ запрос не связан с созданием диаграммы.";
+          }
+        } catch (error) {
+          response = "Непридвиденная ошибка.";
+        }
+      }
       
       // Add assistant message to UI
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: response,
-        timestamp: new Date()
+        timestamp: new Date(),
+        image: imageData || undefined
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -139,7 +200,8 @@ export function BpmnChat() {
         user_id: user.id,
         chat_id: chatId,
         message: input.trim(),
-        response: response
+        response: response,
+        image: imageData || undefined
       })
       
       // Если сообщений не было (первое сообщение в чате), обновляем название чата
@@ -320,40 +382,56 @@ export function BpmnChat() {
   // Check if current user can interact with this chat
   const canInteract = Boolean(chatId && user?.id)
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Messages container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : messages.length > 0 ? (
-          messages.map(message => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                }`}
-              >
-                <div className="whitespace-pre-wrap">{message.content}</div>
-                <div className="text-xs opacity-70 mt-1">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            {!chatId ? 'Выберите чат' : 'Нет сообщений'}
+  // Update the message rendering to include images
+  const renderMessage = (message: Message) => (
+    <div
+      key={message.id}
+      className={`flex flex-col ${
+        message.role === 'user' ? 'items-end' : 'items-start'
+      } mb-4`}
+    >
+      <div
+        className={`max-w-[80%] p-3 rounded-lg ${
+          message.role === 'user'
+            ? 'bg-blue-500 text-white rounded-tr-none'
+            : 'bg-gray-200 text-gray-800 rounded-tl-none'
+        }`}
+      >
+        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+        
+        {/* Render BPMN diagram image if present */}
+        {message.image && (
+          <div className="mt-2">
+            <img 
+              src={`data:image/png;base64,${message.image}`} 
+              alt="BPMN diagram" 
+              className="max-w-full rounded shadow-sm" 
+            />
           </div>
         )}
-        
+      </div>
+      <span className="text-xs text-gray-500 mt-1">
+        {new Date(message.timestamp).toLocaleTimeString()}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Chat messages */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        {isLoadingHistory ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="animate-spin h-6 w-6 mr-2" />
+            <span>Загрузка истории...</span>
+          </div>
+        ) : messages.length > 0 ? (
+          messages.map(renderMessage)
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            <p>Начните новый разговор</p>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
       

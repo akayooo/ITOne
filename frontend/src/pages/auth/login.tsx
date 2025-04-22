@@ -17,14 +17,27 @@ export function LoginPage() {
     e.preventDefault()
     
     try {
-      await login({ username, password })
-      toast({
-        title: "Успешный вход",
-        description: "Добро пожаловать в систему создания BPMN диаграмм!",
-      })
-      navigate("/chat")
+      const success = await login({ username, password })
+      
+      if (success) {
+        toast({
+          title: "Успешный вход",
+          description: "Добро пожаловать в систему создания BPMN диаграмм!",
+        })
+        navigate("/chat")
+      } else if (error) {
+        toast({
+          title: "Ошибка входа",
+          description: error,
+          variant: "destructive"
+        })
+      }
     } catch (error) {
-      // Error already handled by auth store
+      toast({
+        title: "Ошибка",
+        description: "Произошла непредвиденная ошибка при входе",
+        variant: "destructive"
+      })
     }
   }
 
