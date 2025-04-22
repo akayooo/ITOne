@@ -35,8 +35,19 @@ async def websocket_handler(request):
         async for msg in ws:
             if msg.type == web.WSMsgType.BINARY:
                 try:
+                    if len(msg.data) <= 2:
+                        continue
+                        
                     audio_chunk = np.frombuffer(msg.data, dtype=np.int16)
+                    
+                    if len(audio_chunk) == 0:
+                        continue
+                        
                     float_data = audio_chunk.astype(np.float32) / 32768.0
+                    
+                    if len(float_data) <= 3:
+                        continue
+                        
                     resampled_data = signal.resample(float_data, len(float_data) // 3)
                     current_amplitude = np.max(np.abs(resampled_data))
 
@@ -51,10 +62,11 @@ async def websocket_handler(request):
                     else:
                         processor.silence_duration += len(resampled_data) / 16000
 
-                    processor.buffer = np.concatenate([
-                        processor.buffer,
-                        resampled_data.reshape(-1, 1)
-                    ])
+                    if resampled_data.size > 0:
+                        processor.buffer = np.concatenate([
+                            processor.buffer,
+                            resampled_data.reshape(-1, 1)
+                        ])
 
                     should_process = (
                         processor.is_speaking and

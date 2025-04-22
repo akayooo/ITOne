@@ -2,67 +2,186 @@
 <html>
 <head>
   <title>Speech-to-Text Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    button {
+      padding: 10px 15px;
+      margin-right: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    #results {
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 4px;
+      min-height: 200px;
+    }
+    .status {
+      margin-top: 10px;
+      font-style: italic;
+      color: #666;
+    }
+  </style>
 </head>
 <body>
   <h1>Speech-to-Text Test</h1>
   <button id="startBtn">Start Recording</button>
   <button id="stopBtn" disabled>Stop Recording</button>
+  <div class="status" id="status">Нажмите "Start Recording" для начала</div>
   <div id="results"></div>
 
   <script>
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const results = document.getElementById('results');
+    const status = document.getElementById('status');
     let ws;
     let mediaRecorder;
-    let audioChunks = [];
+    let audioContext;
+    let audioWorkletNode;
+    let stream;
+
+    // Настройка размера аудио-чанка в сэмплах
+    const CHUNK_SIZE = 4096;
 
     startBtn.onclick = async () => {
-      // Connect to WebSocket
-      ws = new WebSocket('ws://localhost:8000/ws');
-      
-      ws.onopen = async () => {
-        console.log('WebSocket connected');
+      try {
+        // Очистка предыдущих результатов
+        results.innerHTML = '';
+        status.textContent = 'Подключение к серверу...';
         
-        // Start recording
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
+        // Connect to WebSocket
+        ws = new WebSocket('ws://localhost:8000/ws');
         
-        mediaRecorder.ondataavailable = event => {
-          audioChunks.push(event.data);
-          // Convert to ArrayBuffer and send over WebSocket
-          event.data.arrayBuffer().then(buffer => {
-            ws.send(buffer);
-          });
+        ws.onopen = async () => {
+          status.textContent = 'Подключено. Запрашиваем доступ к микрофону...';
+          
+          try {
+            // Получаем доступ к микрофону
+            stream = await navigator.mediaDevices.getUserMedia({ 
+              audio: { 
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              } 
+            });
+            
+            // Создаем аудио контекст
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+              sampleRate: 48000
+            });
+            
+            // Создаем источник из медиа-потока
+            const microphone = audioContext.createMediaStreamSource(stream);
+            
+            // Создаем processor node для обработки аудио
+            const processor = audioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
+            
+            processor.onaudioprocess = (e) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                // Получаем данные из буфера
+                const inputData = e.inputBuffer.getChannelData(0);
+                
+                // Конвертируем float32 [-1.0,1.0] в int16 [-32768,32767]
+                const intData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                  // Клиппинг для безопасной конвертации
+                  const s = Math.max(-1, Math.min(1, inputData[i]));
+                  intData[i] = s < 0 ? s * 32768 : s * 32767;
+                }
+                
+                // Отправляем данные на сервер
+                ws.send(intData.buffer);
+              }
+            };
+            
+            // Соединяем microphone -> processor -> destination
+            microphone.connect(processor);
+            processor.connect(audioContext.destination);
+            
+            status.textContent = 'Идет запись...';
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+          } catch (err) {
+            status.textContent = 'Ошибка доступа к микрофону: ' + err.message;
+            console.error('Microphone error:', err);
+            ws.close();
+          }
         };
         
-        mediaRecorder.start(100); // Capture in 100ms chunks
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-      };
-      
-      ws.onmessage = event => {
-        // Display transcription results
-        const p = document.createElement('p');
-        p.textContent = event.data;
-        results.appendChild(p);
-      };
-      
-      ws.onerror = error => {
-        console.error('WebSocket error:', error);
-      };
+        ws.onmessage = event => {
+          // Display transcription results
+          const p = document.createElement('p');
+          p.textContent = event.data;
+          results.appendChild(p);
+          
+          // Автопрокрутка до последнего результата
+          results.scrollTop = results.scrollHeight;
+        };
+        
+        ws.onerror = error => {
+          console.error('WebSocket error:', error);
+          status.textContent = 'Ошибка WebSocket соединения';
+        };
+        
+        ws.onclose = () => {
+          status.textContent = 'Соединение закрыто';
+        };
+      } catch (err) {
+        console.error('Error:', err);
+        status.textContent = 'Ошибка: ' + err.message;
+      }
     };
 
     stopBtn.onclick = () => {
-      if (mediaRecorder) {
-        mediaRecorder.stop();
-        mediaRecorder = null;
+      status.textContent = 'Остановка записи...';
+      
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
       }
-      if (ws) {
+      
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+      
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
+      
       startBtn.disabled = false;
       stopBtn.disabled = true;
+      status.textContent = 'Запись остановлена';
+    };
+    
+    // Очистка ресурсов при закрытии страницы
+    window.onbeforeunload = () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
   </script>
 </body>
