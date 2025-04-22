@@ -8,15 +8,52 @@ import { useToast } from "@/components/ui/use-toast";
 
 // Create an empty BPMN 2.0 diagram
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" />
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_Empty"
+  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Empty" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Activity_1" name="Task">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_1" name="End">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="EndEvent_1" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
-      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="173" y="102" width="36" height="36" />
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_Empty">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="159" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="185" y="202" width="24" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1_di" bpmnElement="Activity_1">
+        <dc:Bounds x="270" y="137" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="432" y="159" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="440" y="202" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="215" y="177" />
+        <di:waypoint x="270" y="177" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="370" y="177" />
+        <di:waypoint x="432" y="177" />
+      </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
@@ -31,46 +68,129 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
+  // Step 1: Initialize the container and set it as ready
   useEffect(() => {
     if (!containerRef.current) return;
-
-    // Initialize the BPMN modeler
-    const modeler = new BpmnModeler({
-      container: containerRef.current,
-      keyboard: { bindTo: document },
-    });
-
-    modelerRef.current = modeler;
-
-    // Import the initial diagram or an empty one
-    const diagramToImport = initialDiagram || EMPTY_DIAGRAM;
     
-    modeler.importXML(diagramToImport).then(() => {
-      // Success, adjust the viewport to show all elements
-      const canvas = modeler.get('canvas');
-      canvas.zoom('fit-viewport');
-      
-      if (readOnly) {
-        // Disable interaction in read-only mode
-        canvas.viewbox(canvas.viewbox());
-        modeler.get('palette').hide();
-        modeler.get('contextPad').hide();
+    // Make sure the container has valid dimensions
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setIsReady(true);
+          resizeObserver.disconnect();
+        }
       }
-    }).catch((err: Error) => {
-      console.error('Error importing BPMN diagram', err);
-      toast({
-        title: "Ошибка загрузки диаграммы",
-        description: "Не удалось загрузить BPMN диаграмму",
-        variant: "destructive"
-      });
     });
-
+    
+    resizeObserver.observe(containerRef.current);
+    
     return () => {
-      modeler.destroy();
+      resizeObserver.disconnect();
     };
-  }, [initialDiagram, readOnly, toast]);
+  }, []);
+
+  // Step 2: Initialize the modeler once the container is ready
+  useEffect(() => {
+    if (!isReady || !containerRef.current) return;
+    
+    console.log('BpmnEditor: Container is ready, initializing modeler');
+    try {
+      // Load bpmn-js modules
+      const additionalModules = [];
+      
+      // Initialize with all necessary modules
+      const modeler = new BpmnModeler({
+        container: containerRef.current,
+        keyboard: { bindTo: document },
+        additionalModules: additionalModules,
+        // Ensure we have minimal required modules
+        moddleExtensions: {
+          camunda: {
+            name: 'Camunda',
+            prefix: 'camunda',
+            uri: 'http://camunda.org/schema/1.0/bpmn'
+          }
+        }
+      });
+      
+      modelerRef.current = modeler;
+      
+      // Print available modules for debugging
+      console.log('BpmnEditor: Available modules:', 
+        Object.keys(modeler._modules)
+          .filter(name => typeof modeler.get(name) !== 'undefined')
+          .join(', ')
+      );
+      
+      // Import the initial diagram with a slight delay
+      const diagramToImport = initialDiagram || EMPTY_DIAGRAM;
+      console.log('BpmnEditor: Importing diagram, length:', diagramToImport.length);
+      
+      // Add a small timeout to ensure the DOM is fully rendered
+      setTimeout(() => {
+        modeler.importXML(diagramToImport)
+          .then(({ warnings }) => {
+            // Success, adjust the viewport to show all elements
+            if (warnings && warnings.length) {
+              console.warn('BpmnEditor: Warnings while importing BPMN XML:', warnings);
+            }
+            
+            console.log('BpmnEditor: BPMN diagram imported successfully');
+            const canvas = modeler.get('canvas');
+            canvas.zoom('fit-viewport');
+            
+            if (readOnly) {
+              // Disable interaction in read-only mode
+              canvas.viewbox(canvas.viewbox());
+              
+              // Безопасно скрыть палитру и контекстную панель, если они доступны
+              try {
+                const palette = modeler.get('palette');
+                if (palette && typeof palette.hide === 'function') {
+                  palette.hide();
+                } else {
+                  console.log('BpmnEditor: Palette module not available or hide method not found');
+                }
+              } catch (err) {
+                console.warn('BpmnEditor: Error hiding palette:', err);
+              }
+              
+              try {
+                const contextPad = modeler.get('contextPad');
+                if (contextPad && typeof contextPad.hide === 'function') {
+                  contextPad.hide();
+                } else {
+                  console.log('BpmnEditor: ContextPad module not available or hide method not found');
+                }
+              } catch (err) {
+                console.warn('BpmnEditor: Error hiding contextPad:', err);
+              }
+            }
+          })
+          .catch((err: Error) => {
+            console.error('BpmnEditor: Error importing BPMN diagram', err);
+            handleError(err);
+          });
+      }, 100);
+      
+      return () => {
+        // Ensure clean destruction
+        try {
+          modeler.destroy();
+        } catch (e) {
+          console.error('BpmnEditor: Error destroying modeler', e);
+        }
+      };
+    } catch (err) {
+      console.error('BpmnEditor: Error initializing BPMN modeler', err);
+      handleError(err);
+    }
+  }, [initialDiagram, isReady, readOnly, toast]);
 
   const handleSave = async () => {
     if (!modelerRef.current || !onSave) return;
@@ -84,11 +204,7 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
       });
     } catch (err) {
       console.error('Error saving BPMN diagram', err);
-      toast({
-        title: "Ошибка сохранения",
-        description: "Не удалось сохранить BPMN диаграмму",
-        variant: "destructive"
-      });
+      handleError(err);
     }
   };
 
@@ -110,11 +226,7 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error exporting BPMN diagram', err);
-      toast({
-        title: "Ошибка экспорта",
-        description: "Не удалось экспортировать BPMN диаграмму",
-        variant: "destructive"
-      });
+      handleError(err);
     }
   };
 
@@ -140,6 +252,17 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
+  };
+
+  // При получении ошибки, установим её в состоянии
+  const handleError = (err: Error) => {
+    console.error('BpmnEditor: Error', err);
+    setError(err.message || 'Произошла ошибка при загрузке редактора');
+    toast({
+      title: "Ошибка редактора",
+      description: err.message || 'Произошла ошибка при загрузке редактора',
+      variant: "destructive"
+    });
   };
 
   return (
@@ -218,15 +341,31 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
         </div>
       </div>
       
-      <div 
-        ref={containerRef} 
-        className="flex-1 bpmn-editor-container"
-        style={{
-          height: '100%',
-          width: '100%',
-          overflow: 'hidden'
-        }}
-      />
+      {error ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-red-50 text-red-600">
+          <p className="font-medium text-lg">Ошибка редактора BPMN</p>
+          <p className="mt-2">{error}</p>
+          <Button 
+            variant="outline" 
+            className="mt-4"
+            onClick={() => setError(null)}
+          >
+            Попробовать снова
+          </Button>
+        </div>
+      ) : (
+        <div 
+          ref={containerRef} 
+          className="flex-1 bpmn-editor-container"
+          style={{
+            height: '100%',
+            width: '100%',
+            overflow: 'hidden',
+            position: 'relative',
+            minHeight: '300px' // Обеспечиваем минимальную высоту
+          }}
+        />
+      )}
     </div>
   );
 } 

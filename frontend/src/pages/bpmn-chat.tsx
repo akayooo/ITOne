@@ -42,6 +42,7 @@ export function BpmnChat() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const [useFallbackViewer, setUseFallbackViewer] = useState(false)
 
   // Get chat ID from URL
   const params = new URLSearchParams(location.search)
@@ -164,19 +165,41 @@ export function BpmnChat() {
       
       // Если определили запрос на BPMN диаграмму, генерируем ее
       if (isBpmnRequest) {
-        const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
-        
-        if (bpmnResult.success && bpmnResult.image) {
-          response = "Вот созданная BPMN диаграмма на основе вашего описания:";
-          imageData = bpmnResult.image;
+        try {
+          console.log('Sending BPMN generation request for:', input.trim());
+          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
+          console.log('BPMN result received:', bpmnResult);
           
-          // Save the PiperFlow text for the BPMN editor
-          if (bpmnResult.text) {
-            piperflowText = bpmnResult.text;
-            bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+          if (bpmnResult.success && bpmnResult.image) {
+            response = "Вот созданная BPMN диаграмма на основе вашего описания:";
+            imageData = bpmnResult.image;
+            
+            // Save the PiperFlow text for the BPMN editor
+            if (bpmnResult.text) {
+              piperflowText = bpmnResult.text;
+              console.log('PiperFlow text received from API:', piperflowText);
+              
+              try {
+                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+                console.log('BPMN XML converted successfully, length:', bpmnXml.length);
+              } catch (convError) {
+                console.error('Error converting PiperFlow to BPMN XML:', convError);
+                toast({
+                  title: "Ошибка преобразования",
+                  description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
+                  variant: "destructive"
+                });
+              }
+            } else {
+              console.warn('No PiperFlow text in the API response');
+            }
+          } else {
+            response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+            console.error('BPMN generation failed:', bpmnResult.error);
           }
-        } else {
-          response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+        } catch (error) {
+          console.error('Error calling BPMN generation API:', error);
+          response = "Ошибка при создании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
         }
       } else {
         // Отправляем запрос на генерацию BPMN диаграммы, даже если не распознали явно
@@ -213,6 +236,12 @@ export function BpmnChat() {
         piperflowText: piperflowText || undefined
       }
       
+      console.log('Creating assistant message with:', {
+        hasBpmnXml: !!bpmnXml,
+        hasPiperflowText: !!piperflowText,
+        hasImage: !!imageData
+      });
+
       setMessages(prev => [...prev, assistantMessage])
       
       // Save the message exchange to the database
@@ -414,31 +443,51 @@ export function BpmnChat() {
       >
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
         
-        {/* Render BPMN diagram image if present */}
-        {message.image && (
-          <div className="mt-2 rounded bg-white p-2">
-            <img 
-              src={`data:image/png;base64,${message.image}`} 
-              alt="BPMN diagram"
-              className="max-w-full"
-            />
-          </div>
-        )}
-        
         {/* Use the BpmnEditor component if we have BPMN XML */}
-        {message.bpmnXml && (
+        {message.bpmnXml ? (
           <div className="mt-4">
-            <div className="rounded bg-white border shadow-sm overflow-hidden" style={{ height: '400px' }}>
-              <BpmnEditor initialDiagram={message.bpmnXml} />
+            <div className="rounded bg-white border shadow-sm overflow-hidden" style={{ height: '400px', minWidth: '300px', position: 'relative' }}>
+              <div className="absolute inset-0 z-0">
+                {/* Fallback view if editor fails */}
+                {message.image && (
+                  <img 
+                    src={`data:image/png;base64,${message.image}`} 
+                    alt="BPMN diagram"
+                    className={`w-full h-full object-contain ${useFallbackViewer ? 'opacity-100' : 'opacity-10'}`}
+                  />
+                )}
+              </div>
+              {!useFallbackViewer && (
+                <div className="absolute inset-0 z-10">
+                  {/* Try to use editor, but have fallback */}
+                  <BpmnEditor 
+                    initialDiagram={message.bpmnXml} 
+                    readOnly={true}
+                  />
+                </div>
+              )}
             </div>
             
             <div className="mt-2 flex justify-between items-center">
-              <details className="cursor-pointer text-sm text-muted-foreground">
-                <summary className="font-medium">Показать PiperFlow текст</summary>
-                <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
-                  {message.piperflowText}
-                </pre>
-              </details>
+              <div className="flex gap-2 items-center">
+                <details className="cursor-pointer text-sm text-muted-foreground">
+                  <summary className="font-medium">Показать PiperFlow текст</summary>
+                  <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
+                    {message.piperflowText}
+                  </pre>
+                </details>
+                
+                {message.image && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setUseFallbackViewer(!useFallbackViewer)}
+                    title={useFallbackViewer ? "Показать интерактивный редактор" : "Показать статичное изображение"}
+                  >
+                    {useFallbackViewer ? "Показать редактор" : "Показать изображение"}
+                  </Button>
+                )}
+              </div>
               
               <Button 
                 variant="outline" 
@@ -447,19 +496,51 @@ export function BpmnChat() {
                   // Redirect to full editor with piperflow text
                   const params = new URLSearchParams();
                   if (message.piperflowText) {
-                    params.set('piperflow', btoa(message.piperflowText));
+                    console.log('PiperFlow being sent to editor:', message.piperflowText);
+                    
+                    // Очистить и закодировать текст правильно
+                    const cleanText = message.piperflowText.replace(/[\r\n]+/g, '\n').trim();
+                    params.set('piperflow', btoa(cleanText));
+                  } else {
+                    console.log('No PiperFlow text available to send to editor');
                   }
                   if (message.image) {
                     params.set('image', message.image);
                   }
-                  window.open(`/diagram-editor?${params.toString()}`, '_blank');
+                  const editorUrl = `/diagram-editor?${params.toString()}`;
+                  console.log('Opening editor URL:', editorUrl);
+                  window.open(editorUrl, '_blank');
                 }}
               >
                 Редактировать диаграмму
               </Button>
             </div>
           </div>
-        )}
+        ) : message.image ? (
+          // Отображаем изображение, если нет XML, но есть картинка
+          <div className="mt-2 rounded bg-white p-2">
+            <img 
+              src={`data:image/png;base64,${message.image}`} 
+              alt="BPMN diagram"
+              className="max-w-full"
+            />
+            <div className="mt-2 text-right">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (message.image) {
+                    params.set('image', message.image);
+                  }
+                  window.open(`/diagram-editor?${params.toString()}`, '_blank');
+                }}
+              >
+                Открыть в редакторе
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className={`text-xs text-muted-foreground mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
         {new Date(message.timestamp).toLocaleTimeString()}
