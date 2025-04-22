@@ -141,6 +141,25 @@ export function BpmnChat() {
         message: input.trim(),
         response: response
       })
+      
+      // Если сообщений не было (первое сообщение в чате), обновляем название чата
+      if (messages.length === 0 || (messages.length === 1 && messages[0].role === 'assistant')) {
+        try {
+          // Обрезаем длинные сообщения для названия чата
+          const maxLength = 30
+          let chatName = input.trim()
+          
+          if (chatName.length > maxLength) {
+            chatName = chatName.substring(0, maxLength) + '...'
+          }
+          
+          // Обновляем название чата
+          await chatApi.updateChat(chatId, { name: chatName })
+          console.log("Chat name updated to first message:", chatName)
+        } catch (error) {
+          console.error("Error updating chat name:", error)
+        }
+      }
     } catch (error) {
       console.error("Error processing message:", error)
       toast({
