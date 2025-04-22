@@ -122,24 +122,22 @@ export function ChatLayout() {
 
     try {
       const success = await chatApi.deleteChat(chatToDelete.id)
-      if (success) {
-        // Удаляем из локального списка
-        setChats(chats.filter(c => c.id !== chatToDelete.id))
-        
-        // Если текущий чат был удален, перенаправляем на главную страницу чатов
-        const params = new URLSearchParams(location.search)
-        const currentChatId = params.get("chatId")
-        if (currentChatId === chatToDelete.id.toString()) {
-          navigate("/chat")
-        }
-        
-        toast({
-          title: "Чат удален",
-          description: "Чат успешно удален"
-        })
-      } else {
-        throw new Error("Не удалось удалить чат")
+      
+      // Удаляем из локального списка независимо от результата, т.к. 204 No Content
+      // означает успешное удаление, но API может не вернуть success = true
+      setChats(prevChats => prevChats.filter(c => c.id !== chatToDelete.id))
+      
+      // Если текущий чат был удален, перенаправляем на главную страницу чатов
+      const params = new URLSearchParams(location.search)
+      const currentChatId = params.get("chatId")
+      if (currentChatId === chatToDelete.id.toString()) {
+        navigate("/chat")
       }
+      
+      toast({
+        title: "Чат удален",
+        description: "Чат успешно удален"
+      })
     } catch (error) {
       console.error("Failed to delete chat:", error)
       toast({
