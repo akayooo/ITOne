@@ -61,13 +61,110 @@ export function DiagramsPage() {
     })
   }
   
-  // Handle view diagram (in this demo, just a toast)
-  const handleView = (id: number) => {
-    toast({
-      title: "Просмотр диаграммы",
-      description: `Открытие диаграммы с ID: ${id}`
-    })
-  }
+  // Handle view diagram
+  const handleView = (id: number, type: string, description: string) => {
+    const diagram = diagrams.find(d => d.id === id);
+    if (!diagram) return;
+    
+    // For the demo, we'll create a fake PiperFlow text based on the type and description
+    let fakePiperflow = '';
+    
+    if (type === 'sales') {
+      fakePiperflow = `title: ${diagram.name}
+colourtheme: BLUEMOUNTAIN
+
+pool: Отдел продаж
+    lane: Менеджер по продажам
+        (start) as start_event
+        [Выявление потребностей] as identify_needs
+        [Подготовка коммерческого предложения] as prepare_proposal
+        start_event -> identify_needs -> prepare_proposal
+
+pool: Клиент
+    lane: Лицо принимающее решение
+        [Рассмотрение КП] as review_proposal
+        Одобрено? as approval_gateway
+        [Подписание договора] as sign_contract
+        [Запрос изменений] as request_changes
+        (end) as end_event
+        
+        prepare_proposal -> review_proposal -> approval_gateway
+        approval_gateway -> sign_contract -> end_event
+        approval_gateway -> request_changes -> prepare_proposal
+
+footer: Процесс продаж ${diagram.description}`;
+    } else if (type === 'order') {
+      fakePiperflow = `title: ${diagram.name}
+colourtheme: BLUEMOUNTAIN
+
+pool: Интернет-магазин
+    lane: Система
+        (start) as start_event
+        [Получение заказа] as receive_order
+        [Проверка наличия] as check_stock
+        Товар в наличии? as stock_gateway
+        start_event -> receive_order -> check_stock -> stock_gateway
+
+    lane: Менеджер по заказам
+        [Подтверждение заказа] as confirm_order
+        [Уведомление о задержке] as notify_delay
+        stock_gateway -> confirm_order
+        stock_gateway -> notify_delay
+
+pool: Логистика
+    lane: Склад
+        [Комплектация заказа] as pack_order
+        [Передача в доставку] as hand_to_delivery
+        confirm_order -> pack_order -> hand_to_delivery
+
+    lane: Курьер
+        [Доставка заказа] as deliver_order
+        [Получение оплаты] as receive_payment
+        (end) as end_event
+        
+        hand_to_delivery -> deliver_order -> receive_payment -> end_event
+
+footer: ${diagram.description}`;
+    } else {
+      fakePiperflow = `title: ${diagram.name}
+colourtheme: BLUEMOUNTAIN
+
+pool: Банк
+    lane: Кредитный отдел
+        (start) as start_event
+        [Прием заявки] as receive_application
+        [Проверка документов] as check_documents
+        Документы корректны? as docs_gateway
+        [Проверка кредитной истории] as check_credit
+        Кредитная история положительная? as credit_gateway
+        start_event -> receive_application -> check_documents -> docs_gateway
+        docs_gateway -> check_credit
+        
+    lane: Аналитик
+        [Расчет рисков] as calculate_risks
+        [Принятие решения] as make_decision
+        Одобрено? as decision_gateway
+        [Оформление кредита] as issue_credit
+        [Отказ по заявке] as reject_application
+        (end) as approved_end
+        (end) as rejected_end
+        
+        credit_gateway -> calculate_risks -> make_decision -> decision_gateway
+        decision_gateway -> issue_credit -> approved_end
+        decision_gateway -> reject_application -> rejected_end
+        docs_gateway -> reject_application
+
+footer: ${diagram.description}`;
+    }
+    
+    // Open in editor
+    const params = new URLSearchParams();
+    params.set('id', id.toString());
+    params.set('piperflow', btoa(fakePiperflow));
+    
+    // Redirect to the BPMN editor
+    window.open(`/diagram-editor?${params.toString()}`, '_blank');
+  };
   
   // Filter diagrams based on search term
   const filteredDiagrams = diagrams.filter(diagram => 
@@ -181,7 +278,7 @@ export function DiagramsPage() {
                       variant="ghost" 
                       size="icon" 
                       className="h-8 w-8"
-                      onClick={() => handleView(diagram.id)}
+                      onClick={() => handleView(diagram.id, diagram.type, diagram.description)}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

@@ -9,8 +9,8 @@ Base.metadata.create_all(bind=engine)
 
 # Initialize FastAPI app without OpenAPI to avoid Pydantic schema errors
 app = fastapi.FastAPI(
-    title="ПУПИк API",
-    description="AI-powered Dog Walking Route Optimisation API",
+    title="BPMN API",
+    description="AI-powered BPMN chat + editor",
     version="0.1.0",
 )
 

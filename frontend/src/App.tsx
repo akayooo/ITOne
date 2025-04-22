@@ -6,6 +6,7 @@ import { RegisterPage } from "@/pages/auth/register"
 import { ChatLayout } from "@/components/layout/chat-layout"
 import { BpmnChat } from "@/pages/bpmn-chat"
 import { DiagramsPage } from "@/pages/diagrams"
+import { BpmnEditorPage } from "@/pages/bpmn-editor"
 
 function App() {
   const { isAuthenticated, checkAuth } = useAuthStore()
@@ -55,6 +56,16 @@ function App() {
         <Route index element={<BpmnChat />} />
         <Route path="diagrams" element={<DiagramsPage />} />
       </Route>
+      
+      {/* BPMN Editor Route (full-screen) */}
+      <Route 
+        path="/diagram-editor" 
+        element={
+          <ProtectedRoute>
+            <BpmnEditorPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Fallback route */}
       <Route path="*" element={<Navigate to="/" />} />

@@ -6,6 +6,8 @@ import { SendIcon, MicIcon, XIcon, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { ChatHistoryEntry, chatApi } from "@/lib/api"
 import { useAuthStore } from "@/lib/auth"
+import { BpmnEditor } from "@/components/bpmn-editor/BpmnEditor"
+import { convertPiperflowToBpmn } from "@/lib/bpmn-service"
 
 // Add TypeScript declaration for webkitAudioContext
 declare global {
@@ -20,6 +22,8 @@ interface Message {
   content: string
   timestamp: Date
   image?: string
+  bpmnXml?: string
+  piperflowText?: string
 }
 
 export function BpmnChat() {
@@ -155,6 +159,8 @@ export function BpmnChat() {
       
       let response = '';
       let imageData = '';
+      let bpmnXml = '';
+      let piperflowText = '';
       
       // Если определили запрос на BPMN диаграмму, генерируем ее
       if (isBpmnRequest) {
@@ -163,6 +169,12 @@ export function BpmnChat() {
         if (bpmnResult.success && bpmnResult.image) {
           response = "Вот созданная BPMN диаграмма на основе вашего описания:";
           imageData = bpmnResult.image;
+          
+          // Save the PiperFlow text for the BPMN editor
+          if (bpmnResult.text) {
+            piperflowText = bpmnResult.text;
+            bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+          }
         } else {
           response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
         }
@@ -175,9 +187,15 @@ export function BpmnChat() {
           if (bpmnResult.success && bpmnResult.image) {
             response = "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
             imageData = bpmnResult.image;
+            
+            // Save the PiperFlow text for the BPMN editor
+            if (bpmnResult.text) {
+              piperflowText = bpmnResult.text;
+              bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+            }
           } else {
             // Стандартный ответ для обычных сообщений
-            response = "Кажется ващ запрос не связан с созданием диаграммы.";
+            response = "Кажется ваш запрос не связан с созданием диаграммы.";
           }
         } catch (error) {
           response = "Непридвиденная ошибка.";
@@ -190,7 +208,9 @@ export function BpmnChat() {
         role: 'assistant',
         content: response,
         timestamp: new Date(),
-        image: imageData || undefined
+        image: imageData || undefined,
+        bpmnXml: bpmnXml || undefined,
+        piperflowText: piperflowText || undefined
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -384,35 +404,66 @@ export function BpmnChat() {
 
   // Update the message rendering to include images
   const renderMessage = (message: Message) => (
-    <div
-      key={message.id}
-      className={`flex flex-col ${
-        message.role === 'user' ? 'items-end' : 'items-start'
-      } mb-4`}
-    >
-      <div
-        className={`max-w-[80%] p-3 rounded-lg ${
-          message.role === 'user'
-            ? 'bg-blue-500 text-white rounded-tr-none'
-            : 'bg-gray-200 text-gray-800 rounded-tl-none'
+    <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
+      <div 
+        className={`inline-block max-w-[85%] rounded-xl px-4 py-3 ${
+          message.role === 'user' 
+            ? 'bg-primary text-primary-foreground' 
+            : 'bg-muted'
         }`}
       >
-        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+        <p className="whitespace-pre-wrap break-words">{message.content}</p>
         
         {/* Render BPMN diagram image if present */}
         {message.image && (
-          <div className="mt-2">
+          <div className="mt-2 rounded bg-white p-2">
             <img 
               src={`data:image/png;base64,${message.image}`} 
-              alt="BPMN diagram" 
-              className="max-w-full rounded shadow-sm" 
+              alt="BPMN diagram"
+              className="max-w-full"
             />
           </div>
         )}
+        
+        {/* Use the BpmnEditor component if we have BPMN XML */}
+        {message.bpmnXml && (
+          <div className="mt-4">
+            <div className="rounded bg-white border shadow-sm overflow-hidden" style={{ height: '400px' }}>
+              <BpmnEditor initialDiagram={message.bpmnXml} />
+            </div>
+            
+            <div className="mt-2 flex justify-between items-center">
+              <details className="cursor-pointer text-sm text-muted-foreground">
+                <summary className="font-medium">Показать PiperFlow текст</summary>
+                <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
+                  {message.piperflowText}
+                </pre>
+              </details>
+              
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  // Redirect to full editor with piperflow text
+                  const params = new URLSearchParams();
+                  if (message.piperflowText) {
+                    params.set('piperflow', btoa(message.piperflowText));
+                  }
+                  if (message.image) {
+                    params.set('image', message.image);
+                  }
+                  window.open(`/diagram-editor?${params.toString()}`, '_blank');
+                }}
+              >
+                Редактировать диаграмму
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
-      <span className="text-xs text-gray-500 mt-1">
+      <div className={`text-xs text-muted-foreground mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
         {new Date(message.timestamp).toLocaleTimeString()}
-      </span>
+      </div>
     </div>
   );
 
