@@ -1,435 +1,432 @@
-import { useEffect, useRef, useState } from "react";
-import BpmnModeler from "bpmn-js/lib/Modeler";
-import "bpmn-js/dist/assets/diagram-js.css";
-import "bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css";
+import React, { useEffect, useRef, useState } from 'react';
+import BpmnModeler from 'bpmn-js/lib/Modeler';
+import 'bpmn-js/dist/assets/diagram-js.css';
+import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import { Button } from "@/components/ui/button";
 import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-// Create an empty BPMN 2.0 diagram
+// Empty diagram template
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-  id="Definitions_Empty"
-  targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_Empty" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" name="Start">
-      <bpmn:outgoing>Flow_1</bpmn:outgoing>
-    </bpmn:startEvent>
-    <bpmn:task id="Activity_1" name="Task">
-      <bpmn:incoming>Flow_1</bpmn:incoming>
-      <bpmn:outgoing>Flow_2</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:endEvent id="EndEvent_1" name="End">
-      <bpmn:incoming>Flow_2</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
-    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="EndEvent_1" />
-  </bpmn:process>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd" id="sample-diagram" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn2:process id="Process_1" isExecutable="false">
+    <bpmn2:startEvent id="StartEvent_1"/>
+  </bpmn2:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_Empty">
-      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
-        <dc:Bounds x="179" y="159" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="185" y="202" width="24" height="14" />
-        </bpmndi:BPMNLabel>
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds height="36.0" width="36.0" x="412.0" y="240.0"/>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_1_di" bpmnElement="Activity_1">
-        <dc:Bounds x="270" y="137" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="432" y="159" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="440" y="202" width="20" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
-        <di:waypoint x="215" y="177" />
-        <di:waypoint x="270" y="177" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
-        <di:waypoint x="370" y="177" />
-        <di:waypoint x="432" y="177" />
-      </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
+</bpmn2:definitions>`;
 
 interface BpmnEditorProps {
   initialDiagram?: string;
   readOnly?: boolean;
   onSave?: (xml: string) => void;
-  fallbackImage?: string; // Base64 image to display if editor fails
+  fallbackImage?: string | null;
 }
 
-export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackImage }: BpmnEditorProps) {
+export function BpmnEditor({ 
+  initialDiagram, 
+  readOnly = false, 
+  onSave,
+  fallbackImage
+}: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const modelerRef = useRef<BpmnModeler | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const modelerRef = useRef<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [useFallbackImage, setUseFallbackImage] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const { toast } = useToast();
 
-  // Step 1: Initialize the container and set it as ready
+  // Handle initialization and cleanup
   useEffect(() => {
     if (!containerRef.current) return;
-    
-    // Make sure the container has valid dimensions
-    const resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setIsReady(true);
-          
-          // Adjust canvas if modeler exists
-          if (modelerRef.current) {
-            try {
-              const canvas = modelerRef.current.get('canvas') as any;
-              canvas.zoom('fit-viewport');
-            } catch (err) {
-              console.warn('Error adjusting canvas on resize:', err);
-            }
-          }
-        }
-      }
-    });
-    
-    resizeObserver.observe(containerRef.current);
-    
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
 
-  // Step 2: Initialize the modeler once the container is ready
-  useEffect(() => {
-    if (!isReady || !containerRef.current) return;
-    
-    // If fallback image is being used, don't initialize the modeler
-    if (useFallbackImage && fallbackImage) {
-      return;
-    }
-    
-    console.log('BpmnEditor: Container is ready, initializing modeler');
+    console.log('BpmnEditor: Initializing modeler');
     try {
-      // Note: No need for additionalModules to fix the "No provider for 0" error
-      // Initialize with minimal required configuration
+      const container = containerRef.current;
+      
+      // Create modeler
       const modeler = new BpmnModeler({
-        container: containerRef.current,
-        keyboard: { bindTo: document }
+        container,
+        keyboard: { bindTo: container },
       });
       
       modelerRef.current = modeler;
-      
-      // Import the initial diagram with a slight delay
-      const diagramToImport = initialDiagram || EMPTY_DIAGRAM;
-      console.log('BpmnEditor: Importing diagram, length:', diagramToImport.length, 'starts with:', diagramToImport.substring(0, 100));
-      
-      // Add a small timeout to ensure the DOM is fully rendered
-      setTimeout(() => {
-        modeler.importXML(diagramToImport)
-          .then(({ warnings }) => {
-            // Success, adjust the viewport to show all elements
-            if (warnings && warnings.length) {
-              console.warn('BpmnEditor: Warnings while importing BPMN XML:', warnings);
-            }
-            
-            console.log('BpmnEditor: BPMN diagram imported successfully');
-            
-            try {
-              // Type assertion to access canvas methods
-              const canvas = modeler.get('canvas') as any;
-              canvas.zoom('fit-viewport');
-              
-              if (readOnly) {
-                // Disable interaction in read-only mode
-                canvas.viewbox(canvas.viewbox());
-                
-                // Safely hide palette and context panel if available
-                try {
-                  const palette = modeler.get('palette') as any;
-                  if (palette && typeof palette.hide === 'function') {
-                    palette.hide();
-                  }
-                } catch (err) {
-                  console.warn('BpmnEditor: Error hiding palette:', err);
-                }
-                
-                try {
-                  const contextPad = modeler.get('contextPad') as any;
-                  if (contextPad && typeof contextPad.hide === 'function') {
-                    contextPad.hide();
-                  }
-                } catch (err) {
-                  console.warn('BpmnEditor: Error hiding contextPad:', err);
-                }
-              }
-            } catch (err) {
-              console.warn('Error adjusting diagram view:', err);
-            }
-            
-            // Clear any previous errors
-            setError(null);
-          })
-          .catch((err: Error) => {
-            console.error('BpmnEditor: Error importing BPMN diagram', err);
-            // Check for specific XML structure issues
-            if (diagramToImport) {
-              const hasCollaboration = diagramToImport.includes('<bpmn:collaboration');
-              const hasProcess = diagramToImport.includes('<bpmn:process');
-              const hasDiagram = diagramToImport.includes('<bpmndi:BPMNDiagram');
-              console.error('BPMN XML diagnostic:', {
-                hasCollaboration,
-                hasProcess,
-                hasDiagram,
-                length: diagramToImport.length
-              });
-            }
-            
-            handleError(err);
-            
-            // Switch to fallback image if available and we've tried at least once
-            if (fallbackImage && retryCount > 0) {
-              console.log('BpmnEditor: Switching to fallback image');
-              setUseFallbackImage(true);
-            }
-          });
-      }, 100);
-      
-      return () => {
-        // Ensure clean destruction
+
+      // Configure readonly state if needed
+      if (readOnly && modeler) {
         try {
-          modeler.destroy();
-        } catch (e) {
-          console.error('BpmnEditor: Error destroying modeler', e);
+          const canvas = modeler.get('canvas') as any;
+          if (canvas) {
+            canvas.hideLayer('controls');
+          }
+          
+          const palette = modeler.get('palette') as any;
+          if (palette) {
+            palette.close();
+          }
+          
+          const contextPad = modeler.get('contextPad') as any;
+          if (contextPad) {
+            contextPad.close();
+          }
+        } catch (err) {
+          console.warn('Error setting up readonly mode:', err);
         }
-      };
+      }
+
+      // Ensure the container is visible before importing
+      setTimeout(() => {
+        importDiagram();
+      }, 100);
     } catch (err) {
-      console.error('BpmnEditor: Error initializing BPMN modeler', err);
-      handleError(err);
+      console.error('Error initializing BPMN modeler:', err);
+      setError('Failed to initialize diagram editor');
+      setIsLoading(false);
+    }
+
+    return () => {
+      if (modelerRef.current) {
+        try {
+          modelerRef.current.destroy();
+          modelerRef.current = null;
+        } catch (err) {
+          console.warn('Error destroying modeler:', err);
+        }
+      }
+    };
+  }, []);
+
+  const importDiagram = () => {
+    if (!modelerRef.current) {
+      console.warn('Modeler not initialized');
+      setError('Editor not initialized properly');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    const xmlToImport = initialDiagram || EMPTY_DIAGRAM;
+    
+    try {
+      console.log('BpmnEditor: Importing diagram');
+      
+      modelerRef.current.importXML(xmlToImport)
+        .then(({ warnings }: { warnings: any[] }) => {
+          if (warnings && warnings.length) {
+            console.warn('Warnings while importing BPMN:', warnings);
+          }
+          
+          try {
+            const canvas = modelerRef.current.get('canvas') as any;
+            if (canvas) {
+              // Fit diagram to viewport
+              canvas.zoom('fit-viewport', 'auto');
+            }
+          } catch (err) {
+            console.warn('Error adjusting canvas:', err);
+          }
+          
+          setIsLoading(false);
+        })
+        .catch((err: any) => {
+          console.error('Error importing BPMN diagram:', err);
+          setError('Failed to import diagram');
+          setIsLoading(false);
+          
+          // Switch to fallback image if available
+          if (fallbackImage) {
+            setUseFallbackImage(true);
+          }
+        });
+    } catch (err) {
+      console.error('Exception during diagram import:', err);
+      setError('Failed to process diagram');
+      setIsLoading(false);
       
       // Switch to fallback image if available
       if (fallbackImage) {
-        console.log('BpmnEditor: Switching to fallback image due to initialization error');
         setUseFallbackImage(true);
       }
     }
-  }, [initialDiagram, isReady, readOnly, useFallbackImage, fallbackImage, retryCount]);
+  };
 
-  const handleSave = async () => {
+  const handleResize = () => {
+    if (!modelerRef.current) return;
+    
+    try {
+      const canvas = modelerRef.current.get('canvas') as any;
+      if (canvas) {
+        canvas.resized();
+        canvas.zoom('fit-viewport', 'auto');
+      }
+    } catch (err) {
+      console.warn('Error during resize:', err);
+    }
+  };
+
+  // Handle container resize
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Function to save diagram
+  const saveDiagram = () => {
     if (!modelerRef.current || !onSave) return;
-
+    
     try {
-      const { xml } = await modelerRef.current.saveXML({ format: true });
-      if (xml && onSave) {
-        onSave(xml);
-        toast({
-          title: "Диаграмма сохранена",
-          description: "BPMN диаграмма успешно сохранена"
+      modelerRef.current.saveXML({ format: true })
+        .then(({ xml }: { xml: string }) => {
+          onSave(xml);
+          toast({
+            title: "Диаграмма сохранена",
+            description: "BPMN диаграмма успешно сохранена"
+          });
+        })
+        .catch((err: any) => {
+          console.error('Error saving diagram:', err);
+          toast({
+            title: "Ошибка",
+            description: "Не удалось сохранить диаграмму",
+            variant: "destructive"
+          });
         });
-      }
     } catch (err) {
-      console.error('Error saving BPMN diagram', err);
-      handleError(err);
+      console.error('Exception during save operation:', err);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось сохранить диаграмму",
+        variant: "destructive"
+      });
     }
   };
 
-  const handleExport = async () => {
+  // Function to export diagram
+  const handleExport = () => {
     if (!modelerRef.current) return;
-
+    
     try {
-      const { xml } = await modelerRef.current.saveXML({ format: true });
-      if (xml) {
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        
-        const downloadLink = document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = 'diagram.bpmn';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        URL.revokeObjectURL(url);
-      }
+      modelerRef.current.saveXML({ format: true })
+        .then(({ xml }: { xml: string }) => {
+          if (xml) {
+            const blob = new Blob([xml], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = 'diagram.bpmn';
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            URL.revokeObjectURL(url);
+          }
+        })
+        .catch((err: any) => {
+          console.error('Error exporting BPMN diagram:', err);
+          toast({
+            title: "Ошибка",
+            description: "Не удалось экспортировать диаграмму",
+            variant: "destructive"
+          });
+        });
     } catch (err) {
-      console.error('Error exporting BPMN diagram', err);
-      handleError(err);
+      console.error('Exception during export operation:', err);
     }
   };
 
-  const handleUndo = () => {
+  // Additional utility functions for toolbar actions
+  const zoomIn = () => {
     if (!modelerRef.current) return;
     try {
-      const commandStack = modelerRef.current.get('commandStack') as any;
-      if (commandStack && typeof commandStack.undo === 'function') {
-        commandStack.undo();
-      }
-    } catch (err) {
-      console.warn('Error executing undo:', err);
-    }
-  };
-
-  const handleRedo = () => {
-    if (!modelerRef.current) return;
-    try {
-      const commandStack = modelerRef.current.get('commandStack') as any;
-      if (commandStack && typeof commandStack.redo === 'function') {
-        commandStack.redo();
-      }
-    } catch (err) {
-      console.warn('Error executing redo:', err);
-    }
-  };
-
-  const handleZoomIn = () => {
-    if (!modelerRef.current) return;
-    try {
-      const zoomScroll = modelerRef.current.get('zoomScroll') as any;
-      if (zoomScroll && typeof zoomScroll.stepZoom === 'function') {
-        zoomScroll.stepZoom(1);
+      const canvas = modelerRef.current.get('canvas') as any;
+      if (canvas) {
+        const currentZoom = canvas.zoom();
+        canvas.zoom(currentZoom + 0.1);
       }
     } catch (err) {
       console.warn('Error zooming in:', err);
     }
   };
 
-  const handleZoomOut = () => {
+  const zoomOut = () => {
     if (!modelerRef.current) return;
     try {
-      const zoomScroll = modelerRef.current.get('zoomScroll') as any;
-      if (zoomScroll && typeof zoomScroll.stepZoom === 'function') {
-        zoomScroll.stepZoom(-1);
+      const canvas = modelerRef.current.get('canvas') as any;
+      if (canvas) {
+        const currentZoom = canvas.zoom();
+        canvas.zoom(currentZoom - 0.1);
       }
     } catch (err) {
       console.warn('Error zooming out:', err);
     }
   };
 
+  const resetZoom = () => {
+    if (!modelerRef.current) return;
+    try {
+      const canvas = modelerRef.current.get('canvas') as any;
+      if (canvas) {
+        canvas.zoom('fit-viewport', 'auto');
+      }
+    } catch (err) {
+      console.warn('Error resetting zoom:', err);
+    }
+  };
+
+  const undo = () => {
+    if (!modelerRef.current) return;
+    try {
+      const commandStack = modelerRef.current.get('commandStack') as any;
+      if (commandStack && commandStack.canUndo()) {
+        commandStack.undo();
+      }
+    } catch (err) {
+      console.warn('Error undoing:', err);
+    }
+  };
+
+  const redo = () => {
+    if (!modelerRef.current) return;
+    try {
+      const commandStack = modelerRef.current.get('commandStack') as any;
+      if (commandStack && commandStack.canRedo()) {
+        commandStack.redo();
+      }
+    } catch (err) {
+      console.warn('Error redoing:', err);
+    }
+  };
+
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
-  };
-  
-  const handleRetry = () => {
-    setUseFallbackImage(false);
-    setError(null);
-    setRetryCount(prev => prev + 1);
-  };
-
-  const handleError = (err: unknown) => {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    setError(errorMessage);
-    toast({
-      title: "Ошибка редактора BPMN",
-      description: errorMessage,
-      variant: "destructive"
-    });
+    
+    // Allow the DOM to update, then resize the modeler
+    setTimeout(() => {
+      handleResize();
+    }, 100);
   };
 
+  // Render diagram container with loading state
   return (
     <div className={`bpmn-editor ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : 'relative'}`}>
       {/* Toolbar */}
       <div className="bg-muted p-1 shadow-sm flex items-center space-x-1 rounded-t-md">
-        {!readOnly && (
-          <>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleSave} 
-              disabled={!modelerRef.current || useFallbackImage}
-              title="Сохранить"
-            >
-              <Save className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleExport} 
-              disabled={!modelerRef.current || useFallbackImage}
-              title="Скачать как BPMN файл"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <div className="h-4 w-px bg-border mx-1" />
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleUndo} 
-              disabled={!modelerRef.current || useFallbackImage}
-              title="Отменить"
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleRedo} 
-              disabled={!modelerRef.current || useFallbackImage}
-              title="Повторить"
-            >
-              <Redo className="h-4 w-4" />
-            </Button>
-            <div className="h-4 w-px bg-border mx-1" />
-          </>
-        )}
-        
-        {!useFallbackImage && (
-          <>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleZoomIn} 
-              disabled={!modelerRef.current}
-              title="Увеличить"
-            >
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleZoomOut} 
-              disabled={!modelerRef.current}
-              title="Уменьшить"
-            >
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-        
-        {/* Show retry button if using fallback image */}
-        {useFallbackImage && fallbackImage && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRetry}
-            title="Попробовать загрузить редактор"
+        <div className="flex-1 flex items-center space-x-1">
+          {!readOnly && (
+            <>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={saveDiagram} 
+                disabled={!modelerRef.current || useFallbackImage}
+                title="Сохранить"
+              >
+                <Save className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleExport} 
+                disabled={!modelerRef.current || useFallbackImage}
+                title="Скачать как BPMN файл"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={undo} 
+                disabled={!modelerRef.current || useFallbackImage}
+                title="Отменить"
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={redo} 
+                disabled={!modelerRef.current || useFallbackImage}
+                title="Повторить"
+              >
+                <Redo className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={zoomIn} 
+            disabled={!modelerRef.current}
+            title="Увеличить"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={zoomOut} 
+            disabled={!modelerRef.current}
+            title="Уменьшить"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={resetZoom} 
+            disabled={!modelerRef.current || useFallbackImage}
+            title="Сбросить масштаб"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-        )}
-        
-        <div className="flex-1" />
-        
+        </div>
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={toggleFullscreen}
+          onClick={toggleFullscreen} 
           title={isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим"}
         >
           {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
       </div>
       
-      {/* Editor Container */}
+      {/* Editor container */}
       <div 
         className="border rounded-b-md overflow-hidden"
-        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '100%' }}
+        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '500px' }}
       >
+        {/* Loading indicator */}
+        {isLoading && !useFallbackImage && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            <span className="ml-2">Загрузка диаграммы...</span>
+          </div>
+        )}
+        
+        {/* Error display */}
+        {error && !useFallbackImage && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
+            <div className="text-destructive mb-4">{error}</div>
+            {fallbackImage && (
+              <Button 
+                variant="outline"
+                onClick={() => setUseFallbackImage(true)}
+              >
+                Показать изображение
+              </Button>
+            )}
+          </div>
+        )}
+        
         {/* Fallback image display */}
         {useFallbackImage && fallbackImage ? (
           <div className="h-full w-full flex items-center justify-center bg-white p-4">
@@ -442,32 +439,11 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
         ) : (
           <div 
             ref={containerRef} 
-            className="bpmn-container h-full w-full"
+            className="bpmn-canvas w-full h-full" 
             style={{ position: 'relative', height: '100%' }}
           />
         )}
       </div>
-      
-      {/* Error display */}
-      {error && !useFallbackImage && (
-        <div className="bg-destructive/10 text-destructive p-2 text-sm rounded-md mt-2">
-          <div className="flex justify-between items-center">
-            <div>
-              <strong>Error:</strong> {error}
-            </div>
-            {fallbackImage && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setUseFallbackImage(true)}
-                className="ml-2"
-              >
-                Show Image
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 } 
