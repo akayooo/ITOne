@@ -431,36 +431,70 @@ export function BpmnChat() {
   const canInteract = Boolean(chatId && user?.id)
 
   // Update the message rendering to include images
-  const renderMessage = (message: Message) => (
-    <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
-      <div 
-        className={`inline-block max-w-[85%] rounded-xl px-4 py-3 ${
-          message.role === 'user' 
-            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
-            : 'bg-muted'
-        }`}
-      >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+  const renderMessage = (message: Message) => {
+    // Determine if this message contains a diagram
+    const hasDiagram = message.bpmnXml || message.image;
+    
+    return (
+      <div key={message.id} className="mb-8">
+        {/* User messages are right-aligned, assistant messages are left-aligned */}
+        <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div 
+            className={`${!hasDiagram ? 'max-w-[85%]' : ''} rounded-xl px-4 py-3 ${
+              message.role === 'user' 
+                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
+                : 'bg-muted'
+            }`}
+          >
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          </div>
+        </div>
         
-        {/* Use the BpmnEditor component if we have BPMN XML */}
-        {message.bpmnXml ? (
-          <div className="mt-4">
-            <div className="rounded bg-white border shadow-sm overflow-hidden" style={{ height: '400px', minWidth: '300px', position: 'relative' }}>
-              <BpmnEditor 
-                initialDiagram={message.bpmnXml} 
-                readOnly={true}
-                fallbackImage={message.image}
-              />
-            </div>
+        {/* Timestamp below the message */}
+        <div className={`text-xs text-muted-foreground mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
+          {new Date(message.timestamp).toLocaleTimeString()}
+        </div>
+        
+        {/* Diagram content in full width for better display */}
+        {hasDiagram && (
+          <div className={`mt-3 w-full ${message.role === 'user' ? 'pl-12' : 'pr-12'}`}>
+            {message.bpmnXml ? (
+              <div className="rounded bg-white border shadow-sm overflow-hidden w-full" 
+                   style={{ 
+                     height: '70vh', 
+                     maxHeight: '800px',
+                     minHeight: '500px',
+                     maxWidth: '100%',
+                     margin: '0 auto'
+                   }}>
+                <BpmnEditor 
+                  initialDiagram={message.bpmnXml} 
+                  readOnly={true}
+                  fallbackImage={message.image}
+                />
+              </div>
+            ) : message.image ? (
+              <div className="flex justify-center rounded bg-white p-2">
+                <img 
+                  src={`data:image/png;base64,${message.image}`} 
+                  alt="BPMN diagram"
+                  className="max-w-full"
+                  style={{ maxHeight: '70vh', objectFit: 'contain' }}
+                />
+              </div>
+            ) : null}
             
-            <div className="mt-2 flex justify-between items-center">
+            {/* Controls for the diagram */}
+            <div className="mt-2 flex flex-wrap justify-between items-center gap-2">
               <div className="flex gap-2 items-center">
-                <details className="cursor-pointer text-sm text-muted-foreground">
-                  <summary className="font-medium">Показать PiperFlow текст</summary>
-                  <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
-                    {message.piperflowText}
-                  </pre>
-                </details>
+                {message.piperflowText && (
+                  <details className="cursor-pointer text-sm text-muted-foreground">
+                    <summary className="font-medium">Показать PiperFlow текст</summary>
+                    <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
+                      {message.piperflowText}
+                    </pre>
+                  </details>
+                )}
               </div>
               
               <Button 
@@ -486,41 +520,14 @@ export function BpmnChat() {
                   window.open(editorUrl, '_blank');
                 }}
               >
-                Редактировать диаграмму
+                {message.bpmnXml ? 'Редактировать диаграмму' : 'Открыть в редакторе'}
               </Button>
             </div>
           </div>
-        ) : message.image ? (
-          // Отображаем изображение, если нет XML, но есть картинка
-          <div className="mt-2 rounded bg-white p-2">
-            <img 
-              src={`data:image/png;base64,${message.image}`} 
-              alt="BPMN diagram"
-              className="max-w-full"
-            />
-            <div className="mt-2 text-right">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (message.image) {
-                    params.set('image', message.image);
-                  }
-                  window.open(`/diagram-editor?${params.toString()}`, '_blank');
-                }}
-              >
-                Открыть в редакторе
-              </Button>
-            </div>
-          </div>
-        ) : null}
+        )}
       </div>
-      <div className={`text-xs text-muted-foreground mt-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
-        {new Date(message.timestamp).toLocaleTimeString()}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -532,7 +539,9 @@ export function BpmnChat() {
             <span>Загрузка истории...</span>
           </div>
         ) : messages.length > 0 ? (
-          messages.map(renderMessage)
+          <div className="mx-auto max-w-7xl w-full">
+            {messages.map(renderMessage)}
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500">
             <p>Начните новый разговор</p>
@@ -550,7 +559,7 @@ export function BpmnChat() {
           </div>
         )}
         
-        <form onSubmit={handleSubmit} className="flex space-x-2">
+        <form onSubmit={handleSubmit} className="flex space-x-2 max-w-7xl mx-auto">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}

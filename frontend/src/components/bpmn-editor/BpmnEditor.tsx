@@ -85,7 +85,16 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           setIsReady(true);
-          resizeObserver.disconnect();
+          
+          // Adjust canvas if modeler exists
+          if (modelerRef.current) {
+            try {
+              const canvas = modelerRef.current.get('canvas') as any;
+              canvas.zoom('fit-viewport');
+            } catch (err) {
+              console.warn('Error adjusting canvas on resize:', err);
+            }
+          }
         }
       }
     });
@@ -131,31 +140,37 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
             }
             
             console.log('BpmnEditor: BPMN diagram imported successfully');
-            const canvas = modeler.get('canvas');
-            canvas.zoom('fit-viewport');
             
-            if (readOnly) {
-              // Disable interaction in read-only mode
-              canvas.viewbox(canvas.viewbox());
+            try {
+              // Type assertion to access canvas methods
+              const canvas = modeler.get('canvas') as any;
+              canvas.zoom('fit-viewport');
               
-              // Safely hide palette and context panel if available
-              try {
-                const palette = modeler.get('palette');
-                if (palette && typeof palette.hide === 'function') {
-                  palette.hide();
+              if (readOnly) {
+                // Disable interaction in read-only mode
+                canvas.viewbox(canvas.viewbox());
+                
+                // Safely hide palette and context panel if available
+                try {
+                  const palette = modeler.get('palette') as any;
+                  if (palette && typeof palette.hide === 'function') {
+                    palette.hide();
+                  }
+                } catch (err) {
+                  console.warn('BpmnEditor: Error hiding palette:', err);
                 }
-              } catch (err) {
-                console.warn('BpmnEditor: Error hiding palette:', err);
-              }
-              
-              try {
-                const contextPad = modeler.get('contextPad');
-                if (contextPad && typeof contextPad.hide === 'function') {
-                  contextPad.hide();
+                
+                try {
+                  const contextPad = modeler.get('contextPad') as any;
+                  if (contextPad && typeof contextPad.hide === 'function') {
+                    contextPad.hide();
+                  }
+                } catch (err) {
+                  console.warn('BpmnEditor: Error hiding contextPad:', err);
                 }
-              } catch (err) {
-                console.warn('BpmnEditor: Error hiding contextPad:', err);
               }
+            } catch (err) {
+              console.warn('Error adjusting diagram view:', err);
             }
             
             // Clear any previous errors
@@ -211,11 +226,13 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
 
     try {
       const { xml } = await modelerRef.current.saveXML({ format: true });
-      onSave(xml);
-      toast({
-        title: "Диаграмма сохранена",
-        description: "BPMN диаграмма успешно сохранена"
-      });
+      if (xml && onSave) {
+        onSave(xml);
+        toast({
+          title: "Диаграмма сохранена",
+          description: "BPMN диаграмма успешно сохранена"
+        });
+      }
     } catch (err) {
       console.error('Error saving BPMN diagram', err);
       handleError(err);
@@ -227,17 +244,19 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
 
     try {
       const { xml } = await modelerRef.current.saveXML({ format: true });
-      const blob = new Blob([xml], { type: 'application/xml' });
-      const url = URL.createObjectURL(blob);
-      
-      const downloadLink = document.createElement('a');
-      downloadLink.href = url;
-      downloadLink.download = 'diagram.bpmn';
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      
-      URL.revokeObjectURL(url);
+      if (xml) {
+        const blob = new Blob([xml], { type: 'application/xml' });
+        const url = URL.createObjectURL(blob);
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = 'diagram.bpmn';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
       console.error('Error exporting BPMN diagram', err);
       handleError(err);
@@ -247,7 +266,10 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
   const handleUndo = () => {
     if (!modelerRef.current) return;
     try {
-      modelerRef.current.get('commandStack').undo();
+      const commandStack = modelerRef.current.get('commandStack') as any;
+      if (commandStack && typeof commandStack.undo === 'function') {
+        commandStack.undo();
+      }
     } catch (err) {
       console.warn('Error executing undo:', err);
     }
@@ -256,7 +278,10 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
   const handleRedo = () => {
     if (!modelerRef.current) return;
     try {
-      modelerRef.current.get('commandStack').redo();
+      const commandStack = modelerRef.current.get('commandStack') as any;
+      if (commandStack && typeof commandStack.redo === 'function') {
+        commandStack.redo();
+      }
     } catch (err) {
       console.warn('Error executing redo:', err);
     }
@@ -265,7 +290,10 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
   const handleZoomIn = () => {
     if (!modelerRef.current) return;
     try {
-      modelerRef.current.get('zoomScroll').stepZoom(1);
+      const zoomScroll = modelerRef.current.get('zoomScroll') as any;
+      if (zoomScroll && typeof zoomScroll.stepZoom === 'function') {
+        zoomScroll.stepZoom(1);
+      }
     } catch (err) {
       console.warn('Error zooming in:', err);
     }
@@ -274,7 +302,10 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
   const handleZoomOut = () => {
     if (!modelerRef.current) return;
     try {
-      modelerRef.current.get('zoomScroll').stepZoom(-1);
+      const zoomScroll = modelerRef.current.get('zoomScroll') as any;
+      if (zoomScroll && typeof zoomScroll.stepZoom === 'function') {
+        zoomScroll.stepZoom(-1);
+      }
     } catch (err) {
       console.warn('Error zooming out:', err);
     }
@@ -397,7 +428,7 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
       {/* Editor Container */}
       <div 
         className="border rounded-b-md overflow-hidden"
-        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '100%', minHeight: '400px' }}
+        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '100%' }}
       >
         {/* Fallback image display */}
         {useFallbackImage && fallbackImage ? (
@@ -412,6 +443,7 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackI
           <div 
             ref={containerRef} 
             className="bpmn-container h-full w-full"
+            style={{ position: 'relative', height: '100%' }}
           />
         )}
       </div>

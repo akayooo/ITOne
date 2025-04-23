@@ -337,7 +337,7 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
     // Add pools
     pools.forEach((pool, poolIndex) => {
       const poolId = poolIds[pool.name];
-      const poolTop = poolIndex * POOL_HEIGHT;
+      const poolTop = poolIndex * (POOL_HEIGHT + 50); // Add spacing between pools
       
       bpmnXml += `
       <bpmndi:BPMNShape id="${poolId}_di" bpmnElement="${poolId}" isHorizontal="true">
@@ -348,40 +348,22 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
       let laneY = poolTop;
       pool.lanes.forEach((lane, laneIndex) => {
         const laneId = `Lane_${laneIndex}_${generateId()}`;
+        const laneHeight = POOL_HEIGHT / pool.lanes.length;
         
         bpmnXml += `
       <bpmndi:BPMNShape id="${laneId}_di" bpmnElement="${laneId}" isHorizontal="true">
-        <dc:Bounds x="190" y="${laneY}" width="${POOL_WIDTH - 30}" height="${LANE_HEIGHT}" />
+        <dc:Bounds x="190" y="${laneY}" width="${POOL_WIDTH - 30}" height="${laneHeight}" />
       </bpmndi:BPMNShape>`;
         
         // Add elements with positions
-        const ELEMENT_SPACING = 150;
-        const START_X = 240;
-        const MIDDLE_Y = laneY + LANE_HEIGHT / 2;
+        const ELEMENT_SPACING = 180; // Increased spacing
+        const START_X = 250;
+        const MIDDLE_Y = laneY + laneHeight / 2;
         
         // Arrange elements horizontally
         let elementsByLevel: Record<number, Array<{id: string, type: string, level: number}>> = {};
         
         // Calculate levels for horizontal positioning
-        const getLevel = (id: string, visited = new Set<string>(), level = 0): number => {
-          if (visited.has(id)) return level;
-          visited.add(id);
-          
-          // Find outgoing flows
-          const outflows = lane.flows.filter(f => f.sourceRef === id);
-          if (outflows.length === 0) return level;
-          
-          // Calculate max level of all downstream elements
-          let maxLevel = level;
-          for (const flow of outflows) {
-            const targetLevel = getLevel(flow.targetRef, new Set(visited), level + 1);
-            maxLevel = Math.max(maxLevel, targetLevel);
-          }
-          
-          return maxLevel;
-        };
-        
-        // Assign levels to all elements
         const elementLevels: Record<string, number> = {};
         
         // Find start events or elements without incoming flows as level 0
@@ -390,43 +372,62 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           !lane.flows.some(f => f.targetRef === e.id)
         );
         
-        for (const elem of startElements) {
+        // Initialize all elements with levels
+        startElements.forEach(elem => {
           elementLevels[elem.id] = 0;
           if (!elementsByLevel[0]) elementsByLevel[0] = [];
           elementsByLevel[0].push({id: elem.id, type: elem.type, level: 0});
+        });
+        
+        // Assign levels based on flow depth
+        const assignLevels = (startElementId: string) => {
+          const visited = new Set<string>();
+          const queue: {id: string, level: number}[] = [{id: startElementId, level: 0}];
           
-          // Calculate levels for all elements downstream
-          const visited = new Set<string>([elem.id]);
-          const processLevel = (id: string, level: number) => {
-            const outflows = lane.flows.filter(f => f.sourceRef === id);
-            for (const flow of outflows) {
-              const targetId = flow.targetRef;
-              if (!visited.has(targetId)) {
-                visited.add(targetId);
-                const newLevel = level + 1;
-                elementLevels[targetId] = newLevel;
-                
-                if (!elementsByLevel[newLevel]) elementsByLevel[newLevel] = [];
-                const element = lane.elements.find(e => e.id === targetId);
-                if (element) {
-                  elementsByLevel[newLevel].push({id: targetId, type: element.type, level: newLevel});
-                }
-                
-                processLevel(targetId, newLevel);
-              }
+          while (queue.length > 0) {
+            const {id, level} = queue.shift()!;
+            
+            if (visited.has(id)) continue;
+            visited.add(id);
+            
+            elementLevels[id] = level;
+            if (!elementsByLevel[level]) elementsByLevel[level] = [];
+            
+            const element = lane.elements.find(e => e.id === id);
+            if (element && !elementsByLevel[level].some(e => e.id === id)) {
+              elementsByLevel[level].push({id, type: element.type, level});
             }
-          };
-          
-          processLevel(elem.id, 0);
-        }
+            
+            // Find all outgoing flows
+            const outgoingFlows = lane.flows.filter(f => f.sourceRef === id);
+            outgoingFlows.forEach(flow => {
+              queue.push({id: flow.targetRef, level: level + 1});
+            });
+          }
+        };
+        
+        // Process all start elements
+        startElements.forEach(elem => {
+          assignLevels(elem.id);
+        });
         
         // Ensure all elements have a level
         lane.elements.forEach(elem => {
           if (elementLevels[elem.id] === undefined) {
-            const level = 0; // Default to level 0 if no level assigned
-            elementLevels[elem.id] = level;
-            if (!elementsByLevel[level]) elementsByLevel[level] = [];
-            elementsByLevel[level].push({id: elem.id, type: elem.type, level});
+            // Find any connected elements
+            const incomingFlow = lane.flows.find(f => f.targetRef === elem.id);
+            if (incomingFlow && elementLevels[incomingFlow.sourceRef] !== undefined) {
+              const level = elementLevels[incomingFlow.sourceRef] + 1;
+              elementLevels[elem.id] = level;
+              if (!elementsByLevel[level]) elementsByLevel[level] = [];
+              elementsByLevel[level].push({id: elem.id, type: elem.type, level});
+            } else {
+              // Default to level 0 if no connections
+              const level = 0;
+              elementLevels[elem.id] = level;
+              if (!elementsByLevel[level]) elementsByLevel[level] = [];
+              elementsByLevel[level].push({id: elem.id, type: elem.type, level});
+            }
           }
         });
         
@@ -442,11 +443,13 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           // Distribute elements in this level vertically
           const elemCount = elements.length;
           if (elemCount > 0) {
-            const totalHeight = LANE_HEIGHT * 0.7; // Use 70% of lane height
-            const spacing = totalHeight / (elemCount + 1);
+            // Use 60% of lane height and center vertically
+            const totalHeight = laneHeight * 0.6;
+            const elemSpacing = totalHeight / (elemCount + 1);
+            const startY = laneY + laneHeight * 0.2; // Start at 20% of lane height
             
             elements.forEach((elem, idx) => {
-              const y = laneY + LANE_HEIGHT * 0.15 + (idx + 1) * spacing;
+              const y = startY + (idx + 1) * elemSpacing;
               
               let width = 100;
               let height = 80;
@@ -519,7 +522,7 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           bpmnXml += shapeDef;
         });
         
-        // Add edges for flows
+        // Add edges for flows with proper routing
         lane.flows.forEach(flow => {
           const flowId = flowIds[`${flow.sourceRef}->${flow.targetRef}`];
           const sourcePos = elementPositions[flow.sourceRef];
@@ -527,15 +530,26 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           
           if (sourcePos && targetPos) {
             // Calculate connection points
-            const sourceX = sourcePos.x + sourcePos.width;
-            const sourceY = sourcePos.y + sourcePos.height/2;
+            let sourceX = sourcePos.x + sourcePos.width;
+            let sourceY = sourcePos.y + sourcePos.height/2;
             
-            const targetX = targetPos.x;
-            const targetY = targetPos.y + targetPos.height/2;
+            let targetX = targetPos.x;
+            let targetY = targetPos.y + targetPos.height/2;
             
+            // Create a path with waypoints
             bpmnXml += `
       <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">
-        <di:waypoint x="${sourceX}" y="${sourceY}" />
+        <di:waypoint x="${sourceX}" y="${sourceY}" />`;
+            
+            // Add intermediate waypoint if there's significant vertical distance
+            if (Math.abs(sourceY - targetY) > 30) {
+              const midX = (sourceX + targetX) / 2;
+              bpmnXml += `
+        <di:waypoint x="${midX}" y="${sourceY}" />
+        <di:waypoint x="${midX}" y="${targetY}" />`;
+            }
+            
+            bpmnXml += `
         <di:waypoint x="${targetX}" y="${targetY}" />`;
               
             // Add label for conditions
@@ -554,7 +568,7 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           }
         });
         
-        laneY += LANE_HEIGHT;
+        laneY += laneHeight;
       });
     });
     
