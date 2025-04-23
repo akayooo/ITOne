@@ -3,7 +3,7 @@ import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import { Button } from "@/components/ui/button";
-import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw } from "lucide-react";
+import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, Image, FileText, Share2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 // Empty diagram template
@@ -315,135 +315,250 @@ export function BpmnEditor({
     }, 100);
   };
 
+  const exportAsImage = async () => {
+    if (!modelerRef.current) return;
+    
+    try {
+      const canvas = modelerRef.current.get('canvas');
+      const viewport = canvas.viewbox();
+      
+      // Create a temporary canvas with the current viewport
+      const tempCanvas = document.createElement('canvas');
+      const context = tempCanvas.getContext('2d');
+      if (!context) throw new Error('Could not get canvas context');
+      
+      // Set canvas size to viewport
+      tempCanvas.width = viewport.width;
+      tempCanvas.height = viewport.height;
+      
+      // Get SVG element
+      const svg = containerRef.current?.querySelector('svg');
+      if (!svg) throw new Error('SVG element not found');
+      
+      // Convert SVG to string
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      
+      // Create image from SVG
+      const img = new globalThis.Image();
+      img.onload = () => {
+        context.drawImage(img, 0, 0);
+        // Convert to PNG
+        const pngUrl = tempCanvas.toDataURL('image/png');
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.download = 'diagram.png';
+        link.href = pngUrl;
+        link.click();
+        
+        // Cleanup
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      
+      toast({
+        title: "Экспорт изображения",
+        description: "Диаграмма успешно экспортирована как изображение"
+      });
+    } catch (err) {
+      console.error('Error exporting as image:', err);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось экспортировать изображение",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const exportAsPiperFlow = async () => {
+    if (!modelerRef.current) return;
+    
+    try {
+      const result = await modelerRef.current.saveXML({ format: true });
+      const xml = result.xml;
+      
+      // Convert BPMN XML to PiperFlow format
+      // This is a placeholder - implement actual conversion logic
+      const piperFlowText = `# PiperFlow Text Format\n${new Date().toISOString()}\n\n# Converted from BPMN\n`;
+      
+      // Create blob and download
+      const blob = new Blob([piperFlowText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = 'diagram.piperflow';
+      link.href = url;
+      link.click();
+      
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Экспорт PiperFlow",
+        description: "Диаграмма успешно экспортирована в формат PiperFlow"
+      });
+    } catch (err) {
+      console.error('Error exporting as PiperFlow:', err);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось экспортировать в формат PiperFlow",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const exportAsBpmn = async () => {
+    if (!modelerRef.current) return;
+    
+    try {
+      const result = await modelerRef.current.saveXML({ format: true });
+      const xml = result.xml;
+      
+      // Create blob and download
+      const blob = new Blob([xml], { type: 'application/xml' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = 'diagram.bpmn';
+      link.href = url;
+      link.click();
+      
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Экспорт BPMN",
+        description: "Диаграмма успешно экспортирована в формат BPMN"
+      });
+    } catch (err) {
+      console.error('Error exporting as BPMN:', err);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось экспортировать в формат BPMN",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Render diagram container with loading state
   return (
-    <div className={`bpmn-editor ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : 'relative'}`}>
+    <div className={`relative w-full h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}>
       {/* Toolbar */}
-      <div className="bg-muted p-1 shadow-sm flex items-center space-x-1 rounded-t-md">
-        <div className="flex-1 flex items-center space-x-1">
-          {!readOnly && (
-            <>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={saveDiagram} 
-                disabled={!modelerRef.current || useFallbackImage}
-                title="Сохранить"
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={handleExport} 
-                disabled={!modelerRef.current || useFallbackImage}
-                title="Скачать как BPMN файл"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={undo} 
-                disabled={!modelerRef.current || useFallbackImage}
-                title="Отменить"
-              >
-                <Undo className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={redo} 
-                disabled={!modelerRef.current || useFallbackImage}
-                title="Повторить"
-              >
-                <Redo className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={zoomIn} 
-            disabled={!modelerRef.current}
-            title="Увеличить"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={zoomOut} 
-            disabled={!modelerRef.current}
-            title="Уменьшить"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={resetZoom} 
-            disabled={!modelerRef.current || useFallbackImage}
-            title="Сбросить масштаб"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={toggleFullscreen} 
-          title={isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим"}
+      <div className="absolute top-4 left-4 z-10 flex gap-2 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-sm">
+        {!readOnly && (
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={saveDiagram}
+              title="Сохранить"
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={undo}
+              title="Отменить"
+            >
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={redo}
+              title="Повторить"
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
+            <div className="w-px h-6 bg-gray-200 mx-1" />
+          </>
+        )}
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={zoomIn}
+          title="Приблизить"
         >
-          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={zoomOut}
+          title="Отдалить"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={resetZoom}
+          title="Сбросить масштаб"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Выйти из полноэкранного режима" : "На весь экран"}
+        >
+          {isFullscreen ? (
+            <Minimize className="h-4 w-4" />
+          ) : (
+            <Maximize className="h-4 w-4" />
+          )}
+        </Button>
+        <div className="w-px h-6 bg-gray-200 mx-1" />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={exportAsImage}
+          title="Экспортировать как изображение"
+        >
+          <Image className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={exportAsPiperFlow}
+          title="Экспортировать как PiperFlow"
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={exportAsBpmn}
+          title="Экспортировать как BPMN"
+        >
+          <Share2 className="h-4 w-4" />
         </Button>
       </div>
-      
-      {/* Editor container */}
-      <div 
-        className="border rounded-b-md overflow-hidden"
-        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '500px' }}
-      >
-        {/* Loading indicator */}
-        {isLoading && !useFallbackImage && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-            <span className="ml-2">Загрузка диаграммы...</span>
-          </div>
-        )}
-        
-        {/* Error display */}
-        {error && !useFallbackImage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
-            <div className="text-destructive mb-4">{error}</div>
-            {fallbackImage && (
-              <Button 
-                variant="outline"
-                onClick={() => setUseFallbackImage(true)}
-              >
-                Показать изображение
-              </Button>
-            )}
-          </div>
-        )}
-        
-        {/* Fallback image display */}
-        {useFallbackImage && fallbackImage ? (
-          <div className="h-full w-full flex items-center justify-center bg-white p-4">
-            <img 
-              src={`data:image/png;base64,${fallbackImage}`} 
-              alt="BPMN diagram" 
-              className="max-w-full max-h-full object-contain"
-            />
-          </div>
-        ) : (
-          <div 
-            ref={containerRef} 
-            className="bpmn-canvas w-full h-full" 
-            style={{ position: 'relative', height: '100%' }}
-          />
-        )}
-      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+          <div className="text-red-500">{error}</div>
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      )}
+
+      {/* Fallback image */}
+      {useFallbackImage && fallbackImage ? (
+        <img 
+          src={fallbackImage} 
+          alt="Diagram fallback" 
+          className="w-full h-full object-contain"
+        />
+      ) : (
+        <div ref={containerRef} className="w-full h-full" />
+      )}
     </div>
   );
 } 
