@@ -15,7 +15,10 @@ import {
   Trash2,
   MoreHorizontal,
   Check,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Menu
 } from "lucide-react"
 import { Chat, chatApi } from "@/lib/api"
 import {
@@ -48,6 +51,15 @@ export function ChatLayout() {
   const [chatToRename, setChatToRename] = useState<Chat | null>(null)
   const [newChatName, setNewChatName] = useState("")
   const [isRenaming, setIsRenaming] = useState(false)
+  
+  // Sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(256) // Default width in pixels
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true)
+  const [isResizing, setIsResizing] = useState(false)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const resizingRef = useRef<boolean>(false)
+  const startXRef = useRef<number>(0)
+  const startWidthRef = useRef<number>(0)
 
   // Load chats when component mounts
   useEffect(() => {
@@ -186,6 +198,46 @@ export function ChatLayout() {
     }
   }
 
+  // Handle mouse down on the resizer
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    resizingRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = sidebarWidth
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  // Handle mouse move during resize
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!resizingRef.current) return
+    const delta = e.clientX - startXRef.current
+    const newWidth = Math.max(200, Math.min(400, startWidthRef.current + delta))
+    setSidebarWidth(newWidth)
+  }
+
+  // Handle mouse up after resize
+  const handleMouseUp = () => {
+    setIsResizing(false)
+    resizingRef.current = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+
+  // Toggle sidebar visibility
+  const toggleSidebar = () => {
+    setIsSidebarVisible(!isSidebarVisible)
+  }
+
+  // Clean up event listeners
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
   // Extract chatId from URL if present
   const params = new URLSearchParams(location.search)
   const currentChatId = params.get("chatId")
@@ -193,7 +245,15 @@ export function ChatLayout() {
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
-      <div className="w-64 border-r bg-card flex flex-col">
+      <div 
+        ref={sidebarRef}
+        className={`flex-shrink-0 flex flex-col border-r bg-card transition-all duration-300 ease-in-out ${isResizing ? 'select-none' : ''}`}
+        style={{ 
+          width: isSidebarVisible ? `${sidebarWidth}px` : '0px',
+          opacity: isSidebarVisible ? 1 : 0,
+          overflow: isSidebarVisible ? 'visible' : 'hidden'
+        }}
+      >
         {/* Logo */}
         <div className="w-full px-2 pt-4 pb-4">
           <img 
@@ -333,6 +393,28 @@ export function ChatLayout() {
             </div>
           </div>
         </div>
+      </div>
+      
+      {/* Resizer */}
+      {isSidebarVisible && (
+        <div 
+          className="w-1 flex-shrink-0 bg-transparent hover:bg-primary/10 cursor-col-resize active:bg-primary/20 transition-colors"
+          onMouseDown={handleMouseDown}
+        />
+      )}
+      
+      {/* Toggle sidebar button */}
+      <div className="absolute left-0 top-4 z-10 transition-transform" style={{ 
+        transform: isSidebarVisible ? `translateX(${sidebarWidth}px)` : 'translateX(16px)'
+      }}>
+        <Button 
+          variant="outline" 
+          size="icon" 
+          className="h-8 w-8 rounded-full shadow-md"
+          onClick={toggleSidebar}
+        >
+          {isSidebarVisible ? <ChevronLeft className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+        </Button>
       </div>
       
       {/* Main content */}
