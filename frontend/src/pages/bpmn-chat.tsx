@@ -85,7 +85,9 @@ export function BpmnChat() {
           role: 'assistant' as const,
           content: entry.response,
           timestamp: new Date(entry.created_at),
-          image: entry.image
+          image: entry.image,
+          piperflowText: entry.piperflow_text,
+          bpmnXml: entry.piperflow_text ? convertPiperflowToBpmn(entry.piperflow_text) : undefined
         }
       ]).flat()
       
@@ -249,7 +251,8 @@ export function BpmnChat() {
         chat_id: chatId,
         message: input.trim(),
         response: response,
-        image: imageData || undefined
+        image: imageData || undefined,
+        piperflow_text: piperflowText || undefined
       })
       
       // Если сообщений не было (первое сообщение в чате), обновляем название чата

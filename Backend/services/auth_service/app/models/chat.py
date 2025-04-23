@@ -30,6 +30,7 @@ class ChatHistory(Base):
     message = Column(Text)
     response = Column(Text)
     image = Column(Text, nullable=True)  # For storing base64 encoded BPMN diagram images
+    piperflow_text = Column(Text, nullable=True)  # For storing PiperFlow text for BPMN diagrams
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationship with User model

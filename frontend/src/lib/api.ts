@@ -79,6 +79,7 @@ export interface ChatHistoryEntry {
   message: string
   response: string
   image?: string
+  piperflow_text?: string
   created_at: string
   updated_at: string
 }
@@ -89,6 +90,7 @@ export interface ChatEntry {
   message: string
   response: string
   image?: string
+  piperflow_text?: string
 }
 
 export interface Chat {
