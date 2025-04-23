@@ -194,24 +194,13 @@ export function ChatLayout() {
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <div className="w-64 border-r bg-card flex flex-col">
-        {/* User info */}
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="font-medium truncate">
-              {user?.full_name || user?.username}
-            </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleLogout} 
-              title="Выйти"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="text-xs text-muted-foreground mt-1 truncate">
-            {user?.email}
-          </div>
+        {/* Logo */}
+        <div className="w-full px-2 pt-4 pb-4">
+          <img 
+            src="/logo-3.png" 
+            alt="flowmind.ai" 
+            className="w-full h-auto object-contain"
+          />
         </div>
         
         {/* Navigation */}
@@ -321,6 +310,27 @@ export function ChatLayout() {
               <Settings className="h-4 w-4" />
               <span>Настройки</span>
             </Link>
+            
+            {/* User info */}
+            <div className="mt-4 px-3 py-2 border-t pt-3">
+              <div className="flex items-center justify-between">
+                <div className="font-medium text-sm">
+                  {user?.full_name || user?.username}
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleLogout} 
+                  title="Выйти"
+                  className="h-7 w-7"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1 truncate">
+                {user?.email}
+              </div>
+            </div>
           </div>
         </div>
       </div>

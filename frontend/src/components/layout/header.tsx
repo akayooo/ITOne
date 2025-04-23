@@ -20,7 +20,8 @@ export function Header() {
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold">ПУПИк</span>
+            <img src="/logo-1.png" alt="flowmind.ai" className="w-8 h-8" />
+            <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">flowmind.ai</span>
           </Link>
           <nav className="hidden gap-6 md:flex">
             <Link
