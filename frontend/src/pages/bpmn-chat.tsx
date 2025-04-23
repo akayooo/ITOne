@@ -42,7 +42,6 @@ export function BpmnChat() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null)
-  const [useFallbackViewer, setUseFallbackViewer] = useState(false)
 
   // Get chat ID from URL
   const params = new URLSearchParams(location.search)
@@ -447,25 +446,11 @@ export function BpmnChat() {
         {message.bpmnXml ? (
           <div className="mt-4">
             <div className="rounded bg-white border shadow-sm overflow-hidden" style={{ height: '400px', minWidth: '300px', position: 'relative' }}>
-              <div className="absolute inset-0 z-0">
-                {/* Fallback view if editor fails */}
-                {message.image && (
-                  <img 
-                    src={`data:image/png;base64,${message.image}`} 
-                    alt="BPMN diagram"
-                    className={`w-full h-full object-contain ${useFallbackViewer ? 'opacity-100' : 'opacity-10'}`}
-                  />
-                )}
-              </div>
-              {!useFallbackViewer && (
-                <div className="absolute inset-0 z-10">
-                  {/* Try to use editor, but have fallback */}
-                  <BpmnEditor 
-                    initialDiagram={message.bpmnXml} 
-                    readOnly={true}
-                  />
-                </div>
-              )}
+              <BpmnEditor 
+                initialDiagram={message.bpmnXml} 
+                readOnly={true}
+                fallbackImage={message.image}
+              />
             </div>
             
             <div className="mt-2 flex justify-between items-center">
@@ -476,17 +461,6 @@ export function BpmnChat() {
                     {message.piperflowText}
                   </pre>
                 </details>
-                
-                {message.image && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setUseFallbackViewer(!useFallbackViewer)}
-                    title={useFallbackViewer ? "Показать интерактивный редактор" : "Показать статичное изображение"}
-                  >
-                    {useFallbackViewer ? "Показать редактор" : "Показать изображение"}
-                  </Button>
-                )}
               </div>
               
               <Button 

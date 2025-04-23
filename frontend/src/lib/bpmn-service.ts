@@ -17,222 +17,558 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
     return EMPTY_DIAGRAM;
   }
   
-  // Parse the PiperFlow text
-  const lines = piperflowText.split('\n').filter(line => line.trim() !== '');
-  console.log('Parsed lines:', lines.length);
-  
-  // Extract title, pools, lanes, activities, and flows
-  let title = 'Process';
-  const pools: Array<{
-    name: string;
-    lanes: Array<{
+  try {
+    // Parse the PiperFlow text
+    const lines = piperflowText.split('\n').filter(line => line.trim() !== '');
+    console.log('Parsed lines:', lines.length);
+    
+    // Extract title, pools, lanes, activities, and flows
+    let title = 'Process';
+    const pools: Array<{
       name: string;
-      elements: Array<{
-        type: 'start' | 'end' | 'task' | 'gateway';
-        id: string;
-        name?: string;
+      lanes: Array<{
+        name: string;
+        elements: Array<{
+          type: 'start' | 'end' | 'task' | 'gateway';
+          id: string;
+          name?: string;
+        }>;
+        flows: Array<{
+          sourceRef: string;
+          targetRef: string;
+          condition?: string;
+        }>;
       }>;
-      flows: string[];
-    }>;
-  }> = [];
-  
-  let currentPool: typeof pools[0] | null = null;
-  let currentLane: typeof pools[0]['lanes'][0] | null = null;
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
+    }> = [];
     
-    // Parse title
-    if (trimmed.startsWith('title:')) {
-      title = trimmed.substring('title:'.length).trim();
-      continue;
-    }
+    let currentPool: typeof pools[0] | null = null;
+    let currentLane: typeof pools[0]['lanes'][0] | null = null;
     
-    // Parse pool
-    if (trimmed.startsWith('pool:')) {
-      const poolName = trimmed.substring('pool:'.length).trim();
-      currentPool = { name: poolName, lanes: [] };
-      pools.push(currentPool);
-      currentLane = null;
-      continue;
-    }
-    
-    // Parse lane (must be inside a pool)
-    if (trimmed.startsWith('lane:') && currentPool) {
-      const laneName = trimmed.substring('lane:'.length).trim();
-      currentLane = { name: laneName, elements: [], flows: [] };
-      currentPool.lanes.push(currentLane);
-      continue;
-    }
-    
-    // Parse elements and flows (must be inside a lane)
-    if (currentLane) {
-      // Start event: (start) as start_event
-      if (trimmed.includes('(start)')) {
-        const match = trimmed.match(/\(start\)\s+as\s+(\w+)/);
-        if (match) {
-          currentLane.elements.push({
-            type: 'start',
-            id: match[1]
-          });
-        }
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // Parse title
+      if (trimmed.startsWith('title:')) {
+        title = trimmed.substring('title:'.length).trim();
         continue;
       }
       
-      // End event: (end) as end_event
-      if (trimmed.includes('(end)')) {
-        const match = trimmed.match(/\(end\)\s+as\s+(\w+)/);
-        if (match) {
-          currentLane.elements.push({
-            type: 'end',
-            id: match[1]
-          });
-        }
+      // Parse pool
+      if (trimmed.startsWith('pool:')) {
+        const poolName = trimmed.substring('pool:'.length).trim();
+        currentPool = { name: poolName, lanes: [] };
+        pools.push(currentPool);
+        currentLane = null;
         continue;
       }
       
-      // Task: [Task name] as task_id
-      if (trimmed.includes('[') && trimmed.includes(']')) {
-        const match = trimmed.match(/\[(.*?)\]\s+as\s+(\w+)/);
-        if (match) {
-          currentLane.elements.push({
-            type: 'task',
-            id: match[2],
-            name: match[1]
-          });
-        }
+      // Parse lane (must be inside a pool)
+      if (trimmed.startsWith('lane:') && currentPool) {
+        const laneName = trimmed.substring('lane:'.length).trim();
+        currentLane = { name: laneName, elements: [], flows: [] };
+        currentPool.lanes.push(currentLane);
         continue;
       }
       
-      // Gateway: Gateway? as gateway_id
-      if (trimmed.includes('?') && trimmed.includes(' as ')) {
-        const match = trimmed.match(/(.*?)\?\s+as\s+(\w+)/);
-        if (match) {
-          currentLane.elements.push({
-            type: 'gateway',
-            id: match[2],
-            name: match[1]
-          });
+      // Parse elements and flows (must be inside a lane)
+      if (currentLane) {
+        // Start event: (start) as start_event
+        if (trimmed.includes('(start)')) {
+          const match = trimmed.match(/\(start\)\s+as\s+(\w+)/);
+          if (match) {
+            currentLane.elements.push({
+              type: 'start',
+              id: match[1]
+            });
+          }
+          continue;
         }
-        continue;
-      }
-      
-      // Flow: a -> b -> c
-      if (trimmed.includes('->')) {
-        currentLane.flows.push(trimmed);
+        
+        // End event: (end) as end_event
+        if (trimmed.includes('(end)')) {
+          const match = trimmed.match(/\(end\)\s+as\s+(\w+)/);
+          if (match) {
+            currentLane.elements.push({
+              type: 'end',
+              id: match[1]
+            });
+          }
+          continue;
+        }
+        
+        // Task: [Task name] as task_id
+        if (trimmed.includes('[') && trimmed.includes(']')) {
+          const match = trimmed.match(/\[(.*?)\]\s+as\s+(\w+)/);
+          if (match) {
+            currentLane.elements.push({
+              type: 'task',
+              id: match[2],
+              name: match[1]
+            });
+          }
+          continue;
+        }
+        
+        // Gateway: <Gateway?> as gateway_id
+        if (trimmed.includes('<') && trimmed.includes('>')) {
+          const match = trimmed.match(/<(.*?)>\s+as\s+(\w+)/);
+          if (match) {
+            currentLane.elements.push({
+              type: 'gateway',
+              id: match[2],
+              name: match[1]
+            });
+          }
+          continue;
+        }
+        
+        // Flow: a -> b: Condition
+        if (trimmed.includes('->')) {
+          // Handle sequence flows with conditions
+          if (trimmed.includes(':')) {
+            const parts = trimmed.split(':');
+            const flowPath = parts[0].trim();
+            const condition = parts[1].trim();
+            
+            const pathParts = flowPath.split('->').map(p => p.trim());
+            if (pathParts.length >= 2) {
+              currentLane.flows.push({
+                sourceRef: pathParts[0],
+                targetRef: pathParts[1],
+                condition: condition
+              });
+            }
+          } else {
+            // Standard flows without conditions
+            const pathParts = trimmed.split('->').map(p => p.trim());
+            for (let i = 0; i < pathParts.length - 1; i++) {
+              currentLane.flows.push({
+                sourceRef: pathParts[i],
+                targetRef: pathParts[i + 1]
+              });
+            }
+          }
+        }
       }
     }
-  }
-  
-  // Build the BPMN XML
-  let bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
+
+    // Ensure we have at least one pool
+    if (pools.length === 0) {
+      console.error('No pools found in PiperFlow text');
+      return EMPTY_DIAGRAM;
+    }
+    
+    // Build the BPMN XML
+    // Include xsi namespace for the condition expressions
+    let bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
   id="Definitions_${generateId()}"
   targetNamespace="http://bpmn.io/schema/bpmn"
   exporter="BPMN Editor"
-  exporterVersion="1.0">
-  <bpmn:collaboration id="Collaboration_${generateId()}">
+  exporterVersion="1.0">`;
+    
+    // Create a fixed collaboration ID
+    const collaborationId = `Collaboration_${generateId()}`;
+    
+    bpmnXml += `
+  <bpmn:collaboration id="${collaborationId}">
     <bpmn:documentation>${title}</bpmn:documentation>`;
-  
-  // Add each pool
-  pools.forEach((pool, poolIndex) => {
-    const poolId = `Pool_${generateId()}`;
-    bpmnXml += `
-    <bpmn:participant id="${poolId}" name="${escapeXml(pool.name)}" processRef="Process_${generateId()}" />`;
-  });
-  
-  bpmnXml += `
-  </bpmn:collaboration>`;
-  
-  // Add process for each pool
-  pools.forEach((pool, poolIndex) => {
-    const processId = `Process_${generateId()}`;
     
-    bpmnXml += `
-  <bpmn:process id="${processId}" isExecutable="false">`;
+    // Add each pool with a unique ID
+    const poolIds: Record<string, string> = {};
+    const processIds: Record<string, string> = {};
     
-    // Process-level lanes
-    pool.lanes.forEach((lane, laneIndex) => {
-      const laneId = `Lane_${generateId()}`;
+    pools.forEach((pool) => {
+      const poolId = `Pool_${generateId()}`;
+      const processId = `Process_${generateId()}`;
+      poolIds[pool.name] = poolId;
+      processIds[pool.name] = processId;
+      
       bpmnXml += `
+    <bpmn:participant id="${poolId}" name="${escapeXml(pool.name)}" processRef="${processId}" />`;
+    });
+    
+    bpmnXml += `
+  </bpmn:collaboration>`;
+    
+    // Add process for each pool
+    const elementIds: Record<string, string> = {};
+    const flowIds: Record<string, string> = {};
+    
+    pools.forEach((pool) => {
+      const processId = processIds[pool.name];
+      
+      bpmnXml += `
+  <bpmn:process id="${processId}" isExecutable="false">`;
+      
+      // Process-level lanes
+      pool.lanes.forEach((lane) => {
+        const laneId = `Lane_${generateId()}`;
+        bpmnXml += `
     <bpmn:laneSet id="LaneSet_${generateId()}">
       <bpmn:lane id="${laneId}" name="${escapeXml(lane.name)}">`;
-      
-      // Lane references all elements
-      lane.elements.forEach(element => {
-        bpmnXml += `
+        
+        // Lane references all elements
+        lane.elements.forEach(element => {
+          bpmnXml += `
         <bpmn:flowNodeRef>${element.id}</bpmn:flowNodeRef>`;
+        });
+        
+        bpmnXml += `
+      </bpmn:lane>
+    </bpmn:laneSet>`;
+        
+        // Create unique outgoing IDs for each element
+        const outgoingFlows: Record<string, string[]> = {};
+        const incomingFlows: Record<string, string[]> = {};
+        
+        // First pass: collect all flow connections
+        lane.flows.forEach(flow => {
+          const flowId = `Flow_${generateId()}`;
+          flowIds[`${flow.sourceRef}->${flow.targetRef}`] = flowId;
+          
+          if (!outgoingFlows[flow.sourceRef]) outgoingFlows[flow.sourceRef] = [];
+          outgoingFlows[flow.sourceRef].push(flowId);
+          
+          if (!incomingFlows[flow.targetRef]) incomingFlows[flow.targetRef] = [];
+          incomingFlows[flow.targetRef].push(flowId);
+        });
+        
+        // Add elements with proper connections
+        lane.elements.forEach(element => {
+          const elemOutgoing = outgoingFlows[element.id] || [];
+          const elemIncoming = incomingFlows[element.id] || [];
+          
+          // Store element IDs for diagram positioning later
+          elementIds[element.id] = element.id;
+          
+          switch (element.type) {
+            case 'start':
+              bpmnXml += `
+    <bpmn:startEvent id="${element.id}" name="Start">`;
+              elemOutgoing.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:outgoing>${flowId}</bpmn:outgoing>`;
+              });
+              bpmnXml += `
+    </bpmn:startEvent>`;
+              break;
+              
+            case 'end':
+              bpmnXml += `
+    <bpmn:endEvent id="${element.id}" name="End">`;
+              elemIncoming.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:incoming>${flowId}</bpmn:incoming>`;
+              });
+              bpmnXml += `
+    </bpmn:endEvent>`;
+              break;
+              
+            case 'task':
+              bpmnXml += `
+    <bpmn:task id="${element.id}" name="${escapeXml(element.name || '')}">`;
+              elemIncoming.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:incoming>${flowId}</bpmn:incoming>`;
+              });
+              elemOutgoing.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:outgoing>${flowId}</bpmn:outgoing>`;
+              });
+              bpmnXml += `
+    </bpmn:task>`;
+              break;
+              
+            case 'gateway':
+              bpmnXml += `
+    <bpmn:exclusiveGateway id="${element.id}" name="${escapeXml(element.name || '')}">`;
+              elemIncoming.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:incoming>${flowId}</bpmn:incoming>`;
+              });
+              elemOutgoing.forEach(flowId => {
+                bpmnXml += `
+      <bpmn:outgoing>${flowId}</bpmn:outgoing>`;
+              });
+              bpmnXml += `
+    </bpmn:exclusiveGateway>`;
+              break;
+          }
+        });
+        
+        // Add sequence flows with correct refs
+        lane.flows.forEach(flow => {
+          const flowId = flowIds[`${flow.sourceRef}->${flow.targetRef}`];
+          bpmnXml += `
+    <bpmn:sequenceFlow id="${flowId}" sourceRef="${flow.sourceRef}" targetRef="${flow.targetRef}"`;
+          
+          // Add condition if present
+          if (flow.condition) {
+            bpmnXml += `>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${escapeXml(flow.condition)}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>`;
+          } else {
+            bpmnXml += ` />`;
+          }
+        });
       });
       
       bpmnXml += `
-      </bpmn:lane>
-    </bpmn:laneSet>`;
+  </bpmn:process>`;
+    });
+    
+    // Generate diagram visualization with positions
+    bpmnXml += `
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${collaborationId}">`;
+    
+    // Add pool shapes with coordinates
+    let poolY = 0;
+    const POOL_HEIGHT = 300;
+    const LANE_HEIGHT = 200;
+    const POOL_WIDTH = 800;
+    
+    // Add pools
+    pools.forEach((pool, poolIndex) => {
+      const poolId = poolIds[pool.name];
+      const poolTop = poolIndex * POOL_HEIGHT;
       
-      // Add elements
-      lane.elements.forEach(element => {
-        switch (element.type) {
-          case 'start':
-            bpmnXml += `
-    <bpmn:startEvent id="${element.id}" name="Start">
-      <bpmn:outgoing>Flow_${generateId()}</bpmn:outgoing>
-    </bpmn:startEvent>`;
-            break;
-          case 'end':
-            bpmnXml += `
-    <bpmn:endEvent id="${element.id}" name="End">
-      <bpmn:incoming>Flow_${generateId()}</bpmn:incoming>
-    </bpmn:endEvent>`;
-            break;
-          case 'task':
-            bpmnXml += `
-    <bpmn:task id="${element.id}" name="${escapeXml(element.name || '')}">
-      <bpmn:incoming>Flow_${generateId()}</bpmn:incoming>
-      <bpmn:outgoing>Flow_${generateId()}</bpmn:outgoing>
-    </bpmn:task>`;
-            break;
-          case 'gateway':
-            bpmnXml += `
-    <bpmn:exclusiveGateway id="${element.id}" name="${escapeXml(element.name || '')}">
-      <bpmn:incoming>Flow_${generateId()}</bpmn:incoming>
-      <bpmn:outgoing>Flow_${generateId()}</bpmn:outgoing>
-      <bpmn:outgoing>Flow_${generateId()}</bpmn:outgoing>
-    </bpmn:exclusiveGateway>`;
-            break;
-        }
-      });
+      bpmnXml += `
+      <bpmndi:BPMNShape id="${poolId}_di" bpmnElement="${poolId}" isHorizontal="true">
+        <dc:Bounds x="160" y="${poolTop}" width="${POOL_WIDTH}" height="${POOL_HEIGHT}" />
+      </bpmndi:BPMNShape>`;
       
-      // Add sequence flows based on the flow definitions
-      lane.flows.forEach(flow => {
-        const parts = flow.split('->').map(p => p.trim());
-        for (let i = 0; i < parts.length - 1; i++) {
-          const flowId = `Flow_${generateId()}`;
-          bpmnXml += `
-    <bpmn:sequenceFlow id="${flowId}" sourceRef="${parts[i]}" targetRef="${parts[i + 1]}" />`;
+      // Add lanes
+      let laneY = poolTop;
+      pool.lanes.forEach((lane, laneIndex) => {
+        const laneId = `Lane_${laneIndex}_${generateId()}`;
+        
+        bpmnXml += `
+      <bpmndi:BPMNShape id="${laneId}_di" bpmnElement="${laneId}" isHorizontal="true">
+        <dc:Bounds x="190" y="${laneY}" width="${POOL_WIDTH - 30}" height="${LANE_HEIGHT}" />
+      </bpmndi:BPMNShape>`;
+        
+        // Add elements with positions
+        const ELEMENT_SPACING = 150;
+        const START_X = 240;
+        const MIDDLE_Y = laneY + LANE_HEIGHT / 2;
+        
+        // Arrange elements horizontally
+        let elementsByLevel: Record<number, Array<{id: string, type: string, level: number}>> = {};
+        
+        // Calculate levels for horizontal positioning
+        const getLevel = (id: string, visited = new Set<string>(), level = 0): number => {
+          if (visited.has(id)) return level;
+          visited.add(id);
+          
+          // Find outgoing flows
+          const outflows = lane.flows.filter(f => f.sourceRef === id);
+          if (outflows.length === 0) return level;
+          
+          // Calculate max level of all downstream elements
+          let maxLevel = level;
+          for (const flow of outflows) {
+            const targetLevel = getLevel(flow.targetRef, new Set(visited), level + 1);
+            maxLevel = Math.max(maxLevel, targetLevel);
+          }
+          
+          return maxLevel;
+        };
+        
+        // Assign levels to all elements
+        const elementLevels: Record<string, number> = {};
+        
+        // Find start events or elements without incoming flows as level 0
+        const startElements = lane.elements.filter(e => 
+          e.type === 'start' || 
+          !lane.flows.some(f => f.targetRef === e.id)
+        );
+        
+        for (const elem of startElements) {
+          elementLevels[elem.id] = 0;
+          if (!elementsByLevel[0]) elementsByLevel[0] = [];
+          elementsByLevel[0].push({id: elem.id, type: elem.type, level: 0});
+          
+          // Calculate levels for all elements downstream
+          const visited = new Set<string>([elem.id]);
+          const processLevel = (id: string, level: number) => {
+            const outflows = lane.flows.filter(f => f.sourceRef === id);
+            for (const flow of outflows) {
+              const targetId = flow.targetRef;
+              if (!visited.has(targetId)) {
+                visited.add(targetId);
+                const newLevel = level + 1;
+                elementLevels[targetId] = newLevel;
+                
+                if (!elementsByLevel[newLevel]) elementsByLevel[newLevel] = [];
+                const element = lane.elements.find(e => e.id === targetId);
+                if (element) {
+                  elementsByLevel[newLevel].push({id: targetId, type: element.type, level: newLevel});
+                }
+                
+                processLevel(targetId, newLevel);
+              }
+            }
+          };
+          
+          processLevel(elem.id, 0);
         }
+        
+        // Ensure all elements have a level
+        lane.elements.forEach(elem => {
+          if (elementLevels[elem.id] === undefined) {
+            const level = 0; // Default to level 0 if no level assigned
+            elementLevels[elem.id] = level;
+            if (!elementsByLevel[level]) elementsByLevel[level] = [];
+            elementsByLevel[level].push({id: elem.id, type: elem.type, level});
+          }
+        });
+        
+        const maxLevel = Math.max(...Object.values(elementLevels), 0);
+        
+        // Position elements based on levels
+        const elementPositions: Record<string, {x: number, y: number, height: number, width: number}> = {};
+        
+        for (let level = 0; level <= maxLevel; level++) {
+          const elements = elementsByLevel[level] || [];
+          const x = START_X + level * ELEMENT_SPACING;
+          
+          // Distribute elements in this level vertically
+          const elemCount = elements.length;
+          if (elemCount > 0) {
+            const totalHeight = LANE_HEIGHT * 0.7; // Use 70% of lane height
+            const spacing = totalHeight / (elemCount + 1);
+            
+            elements.forEach((elem, idx) => {
+              const y = laneY + LANE_HEIGHT * 0.15 + (idx + 1) * spacing;
+              
+              let width = 100;
+              let height = 80;
+              
+              // Adjust dimensions based on element type
+              if (elem.type === 'start' || elem.type === 'end') {
+                width = 36;
+                height = 36;
+              } else if (elem.type === 'gateway') {
+                width = 50;
+                height = 50;
+              }
+              
+              elementPositions[elem.id] = {
+                x,
+                y: y - height/2, // Center vertically
+                width,
+                height
+              };
+            });
+          }
+        }
+        
+        // Add shapes for each element
+        lane.elements.forEach(element => {
+          const pos = elementPositions[element.id] || 
+                     { x: START_X, y: MIDDLE_Y - 40, width: 100, height: 80 };
+          
+          let shapeDef = '';
+          
+          switch (element.type) {
+            case 'start':
+              shapeDef = `
+      <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="${pos.x}" y="${pos.y + 36 + 5}" width="36" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>`;
+              break;
+              
+            case 'end':
+              shapeDef = `
+      <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="${pos.x}" y="${pos.y + 36 + 5}" width="36" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>`;
+              break;
+              
+            case 'task':
+              shapeDef = `
+      <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="100" height="80" />
+      </bpmndi:BPMNShape>`;
+              break;
+              
+            case 'gateway':
+              shapeDef = `
+      <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="${pos.x - 15}" y="${pos.y - 20}" width="80" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>`;
+              break;
+          }
+          
+          bpmnXml += shapeDef;
+        });
+        
+        // Add edges for flows
+        lane.flows.forEach(flow => {
+          const flowId = flowIds[`${flow.sourceRef}->${flow.targetRef}`];
+          const sourcePos = elementPositions[flow.sourceRef];
+          const targetPos = elementPositions[flow.targetRef];
+          
+          if (sourcePos && targetPos) {
+            // Calculate connection points
+            const sourceX = sourcePos.x + sourcePos.width;
+            const sourceY = sourcePos.y + sourcePos.height/2;
+            
+            const targetX = targetPos.x;
+            const targetY = targetPos.y + targetPos.height/2;
+            
+            bpmnXml += `
+      <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">
+        <di:waypoint x="${sourceX}" y="${sourceY}" />
+        <di:waypoint x="${targetX}" y="${targetY}" />`;
+              
+            // Add label for conditions
+            if (flow.condition) {
+              const labelX = (sourceX + targetX) / 2;
+              const labelY = (sourceY + targetY) / 2 - 15;
+              
+              bpmnXml += `
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="${labelX - 40}" y="${labelY}" width="80" height="14" />
+        </bpmndi:BPMNLabel>`;
+            }
+            
+            bpmnXml += `
+      </bpmndi:BPMNEdge>`;
+          }
+        });
+        
+        laneY += LANE_HEIGHT;
       });
     });
     
     bpmnXml += `
-  </bpmn:process>`;
-  });
-  
-  // Add diagram visualization
-  bpmnXml += `
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_${generateId()}">
-      <!-- Diagram visualization would be added here by the modeler -->
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
-  
-  // Before returning the final XML
-  console.log('Generated BPMN XML with pools:', pools.length);
-  return bpmnXml;
+    
+    console.log('Generated BPMN XML with pools:', pools.length);
+    return bpmnXml;
+  } catch (error) {
+    console.error('Error generating BPMN XML:', error);
+    return EMPTY_DIAGRAM;
+  }
 };
 
 /**
@@ -295,7 +631,7 @@ const escapeXml = (unsafe: string): string => {
 
 // Create an empty BPMN 2.0 diagram for fallback
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Empty" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Empty" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_Empty" isExecutable="false">
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>

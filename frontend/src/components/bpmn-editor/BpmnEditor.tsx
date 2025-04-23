@@ -3,7 +3,7 @@ import BpmnModeler from "bpmn-js/lib/Modeler";
 import "bpmn-js/dist/assets/diagram-js.css";
 import "bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css";
 import { Button } from "@/components/ui/button";
-import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize } from "lucide-react";
+import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 // Create an empty BPMN 2.0 diagram
@@ -62,14 +62,17 @@ interface BpmnEditorProps {
   initialDiagram?: string;
   readOnly?: boolean;
   onSave?: (xml: string) => void;
+  fallbackImage?: string; // Base64 image to display if editor fails
 }
 
-export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEditorProps) {
+export function BpmnEditor({ initialDiagram, readOnly = false, onSave, fallbackImage }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useFallbackImage, setUseFallbackImage] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const { toast } = useToast();
 
   // Step 1: Initialize the container and set it as ready
@@ -98,38 +101,25 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
   useEffect(() => {
     if (!isReady || !containerRef.current) return;
     
+    // If fallback image is being used, don't initialize the modeler
+    if (useFallbackImage && fallbackImage) {
+      return;
+    }
+    
     console.log('BpmnEditor: Container is ready, initializing modeler');
     try {
-      // Load bpmn-js modules
-      const additionalModules = [];
-      
-      // Initialize with all necessary modules
+      // Note: No need for additionalModules to fix the "No provider for 0" error
+      // Initialize with minimal required configuration
       const modeler = new BpmnModeler({
         container: containerRef.current,
-        keyboard: { bindTo: document },
-        additionalModules: additionalModules,
-        // Ensure we have minimal required modules
-        moddleExtensions: {
-          camunda: {
-            name: 'Camunda',
-            prefix: 'camunda',
-            uri: 'http://camunda.org/schema/1.0/bpmn'
-          }
-        }
+        keyboard: { bindTo: document }
       });
       
       modelerRef.current = modeler;
       
-      // Print available modules for debugging
-      console.log('BpmnEditor: Available modules:', 
-        Object.keys(modeler._modules)
-          .filter(name => typeof modeler.get(name) !== 'undefined')
-          .join(', ')
-      );
-      
       // Import the initial diagram with a slight delay
       const diagramToImport = initialDiagram || EMPTY_DIAGRAM;
-      console.log('BpmnEditor: Importing diagram, length:', diagramToImport.length);
+      console.log('BpmnEditor: Importing diagram, length:', diagramToImport.length, 'starts with:', diagramToImport.substring(0, 100));
       
       // Add a small timeout to ensure the DOM is fully rendered
       setTimeout(() => {
@@ -148,13 +138,11 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
               // Disable interaction in read-only mode
               canvas.viewbox(canvas.viewbox());
               
-              // Безопасно скрыть палитру и контекстную панель, если они доступны
+              // Safely hide palette and context panel if available
               try {
                 const palette = modeler.get('palette');
                 if (palette && typeof palette.hide === 'function') {
                   palette.hide();
-                } else {
-                  console.log('BpmnEditor: Palette module not available or hide method not found');
                 }
               } catch (err) {
                 console.warn('BpmnEditor: Error hiding palette:', err);
@@ -164,17 +152,37 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
                 const contextPad = modeler.get('contextPad');
                 if (contextPad && typeof contextPad.hide === 'function') {
                   contextPad.hide();
-                } else {
-                  console.log('BpmnEditor: ContextPad module not available or hide method not found');
                 }
               } catch (err) {
                 console.warn('BpmnEditor: Error hiding contextPad:', err);
               }
             }
+            
+            // Clear any previous errors
+            setError(null);
           })
           .catch((err: Error) => {
             console.error('BpmnEditor: Error importing BPMN diagram', err);
+            // Check for specific XML structure issues
+            if (diagramToImport) {
+              const hasCollaboration = diagramToImport.includes('<bpmn:collaboration');
+              const hasProcess = diagramToImport.includes('<bpmn:process');
+              const hasDiagram = diagramToImport.includes('<bpmndi:BPMNDiagram');
+              console.error('BPMN XML diagnostic:', {
+                hasCollaboration,
+                hasProcess,
+                hasDiagram,
+                length: diagramToImport.length
+              });
+            }
+            
             handleError(err);
+            
+            // Switch to fallback image if available and we've tried at least once
+            if (fallbackImage && retryCount > 0) {
+              console.log('BpmnEditor: Switching to fallback image');
+              setUseFallbackImage(true);
+            }
           });
       }, 100);
       
@@ -189,8 +197,14 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
     } catch (err) {
       console.error('BpmnEditor: Error initializing BPMN modeler', err);
       handleError(err);
+      
+      // Switch to fallback image if available
+      if (fallbackImage) {
+        console.log('BpmnEditor: Switching to fallback image due to initialization error');
+        setUseFallbackImage(true);
+      }
     }
-  }, [initialDiagram, isReady, readOnly, toast]);
+  }, [initialDiagram, isReady, readOnly, useFallbackImage, fallbackImage, retryCount]);
 
   const handleSave = async () => {
     if (!modelerRef.current || !onSave) return;
@@ -232,139 +246,195 @@ export function BpmnEditor({ initialDiagram, readOnly = false, onSave }: BpmnEdi
 
   const handleUndo = () => {
     if (!modelerRef.current) return;
-    modelerRef.current.get('commandStack').undo();
+    try {
+      modelerRef.current.get('commandStack').undo();
+    } catch (err) {
+      console.warn('Error executing undo:', err);
+    }
   };
 
   const handleRedo = () => {
     if (!modelerRef.current) return;
-    modelerRef.current.get('commandStack').redo();
+    try {
+      modelerRef.current.get('commandStack').redo();
+    } catch (err) {
+      console.warn('Error executing redo:', err);
+    }
   };
 
   const handleZoomIn = () => {
     if (!modelerRef.current) return;
-    modelerRef.current.get('zoomScroll').stepZoom(1);
+    try {
+      modelerRef.current.get('zoomScroll').stepZoom(1);
+    } catch (err) {
+      console.warn('Error zooming in:', err);
+    }
   };
 
   const handleZoomOut = () => {
     if (!modelerRef.current) return;
-    modelerRef.current.get('zoomScroll').stepZoom(-1);
+    try {
+      modelerRef.current.get('zoomScroll').stepZoom(-1);
+    } catch (err) {
+      console.warn('Error zooming out:', err);
+    }
   };
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
   };
+  
+  const handleRetry = () => {
+    setUseFallbackImage(false);
+    setError(null);
+    setRetryCount(prev => prev + 1);
+  };
 
-  // При получении ошибки, установим её в состоянии
-  const handleError = (err: Error) => {
-    console.error('BpmnEditor: Error', err);
-    setError(err.message || 'Произошла ошибка при загрузке редактора');
+  const handleError = (err: unknown) => {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    setError(errorMessage);
     toast({
-      title: "Ошибка редактора",
-      description: err.message || 'Произошла ошибка при загрузке редактора',
+      title: "Ошибка редактора BPMN",
+      description: errorMessage,
       variant: "destructive"
     });
   };
 
   return (
-    <div className={`flex flex-col ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'h-full'}`}>
-      <div className="border-b p-2 flex items-center justify-between bg-muted/30">
-        <div className="flex items-center space-x-2">
-          {!readOnly && (
-            <>
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={handleUndo}
-                title="Отменить"
-              >
-                <Undo className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={handleRedo}
-                title="Повторить"
-              >
-                <Redo className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={handleZoomIn}
-            title="Увеличить"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={handleZoomOut}
-            title="Уменьшить"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {!readOnly && onSave && (
+    <div className={`bpmn-editor ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : 'relative'}`}>
+      {/* Toolbar */}
+      <div className="bg-muted p-1 shadow-sm flex items-center space-x-1 rounded-t-md">
+        {!readOnly && (
+          <>
             <Button 
-              variant="outline"
-              onClick={handleSave}
-              className="flex items-center space-x-1"
+              variant="ghost" 
+              size="icon" 
+              onClick={handleSave} 
+              disabled={!modelerRef.current || useFallbackImage}
+              title="Сохранить"
             >
-              <Save className="h-4 w-4 mr-1" />
-              <span>Сохранить</span>
+              <Save className="h-4 w-4" />
             </Button>
-          )}
-          <Button 
-            variant="outline"
-            onClick={handleExport}
-            className="flex items-center space-x-1"
-          >
-            <Download className="h-4 w-4 mr-1" />
-            <span>Экспорт</span>
-          </Button>
-          <Button 
-            variant="outline" 
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleExport} 
+              disabled={!modelerRef.current || useFallbackImage}
+              title="Скачать как BPMN файл"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <div className="h-4 w-px bg-border mx-1" />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleUndo} 
+              disabled={!modelerRef.current || useFallbackImage}
+              title="Отменить"
+            >
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleRedo} 
+              disabled={!modelerRef.current || useFallbackImage}
+              title="Повторить"
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
+            <div className="h-4 w-px bg-border mx-1" />
+          </>
+        )}
+        
+        {!useFallbackImage && (
+          <>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleZoomIn} 
+              disabled={!modelerRef.current}
+              title="Увеличить"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleZoomOut} 
+              disabled={!modelerRef.current}
+              title="Уменьшить"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+        
+        {/* Show retry button if using fallback image */}
+        {useFallbackImage && fallbackImage && (
+          <Button
+            variant="ghost"
             size="icon"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим"}
+            onClick={handleRetry}
+            title="Попробовать загрузить редактор"
           >
-            {isFullscreen ? (
-              <Minimize className="h-4 w-4" />
-            ) : (
-              <Maximize className="h-4 w-4" />
-            )}
+            <RefreshCw className="h-4 w-4" />
           </Button>
-        </div>
+        )}
+        
+        <div className="flex-1" />
+        
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим"}
+        >
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+        </Button>
       </div>
       
-      {error ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-red-50 text-red-600">
-          <p className="font-medium text-lg">Ошибка редактора BPMN</p>
-          <p className="mt-2">{error}</p>
-          <Button 
-            variant="outline" 
-            className="mt-4"
-            onClick={() => setError(null)}
-          >
-            Попробовать снова
-          </Button>
+      {/* Editor Container */}
+      <div 
+        className="border rounded-b-md overflow-hidden"
+        style={{ height: isFullscreen ? 'calc(100vh - 48px)' : '100%', minHeight: '400px' }}
+      >
+        {/* Fallback image display */}
+        {useFallbackImage && fallbackImage ? (
+          <div className="h-full w-full flex items-center justify-center bg-white p-4">
+            <img 
+              src={`data:image/png;base64,${fallbackImage}`} 
+              alt="BPMN diagram" 
+              className="max-w-full max-h-full object-contain"
+            />
+          </div>
+        ) : (
+          <div 
+            ref={containerRef} 
+            className="bpmn-container h-full w-full"
+          />
+        )}
+      </div>
+      
+      {/* Error display */}
+      {error && !useFallbackImage && (
+        <div className="bg-destructive/10 text-destructive p-2 text-sm rounded-md mt-2">
+          <div className="flex justify-between items-center">
+            <div>
+              <strong>Error:</strong> {error}
+            </div>
+            {fallbackImage && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setUseFallbackImage(true)}
+                className="ml-2"
+              >
+                Show Image
+              </Button>
+            )}
+          </div>
         </div>
-      ) : (
-        <div 
-          ref={containerRef} 
-          className="flex-1 bpmn-editor-container"
-          style={{
-            height: '100%',
-            width: '100%',
-            overflow: 'hidden',
-            position: 'relative',
-            minHeight: '300px' // Обеспечиваем минимальную высоту
-          }}
-        />
       )}
     </div>
   );
