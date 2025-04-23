@@ -437,7 +437,7 @@ export function BpmnChat() {
       <div 
         className={`inline-block max-w-[85%] rounded-xl px-4 py-3 ${
           message.role === 'user' 
-            ? 'bg-primary text-primary-foreground' 
+            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
             : 'bg-muted'
         }`}
       >
