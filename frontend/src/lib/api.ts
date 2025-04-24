@@ -156,13 +156,17 @@ export const chatApi = {
   },
   
   // Generate BPMN diagram from text description
-  generateBpmnDiagram: async (description: string): Promise<{
+  generateBpmnDiagram: async (description: string, requestId?: string): Promise<{
     success: boolean;
     image?: string;
     text?: string;
     error?: string;
+    is_bpmn_request?: boolean;
   }> => {
-    const response = await api.post('/api/bpmn/generate', { description })
+    const response = await api.post('/api/bpmn/generate', { 
+      description,
+      request_id: requestId || `req_${Date.now()}`
+    })
     return response.data
   }
 }

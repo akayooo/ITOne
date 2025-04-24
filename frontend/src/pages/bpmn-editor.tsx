@@ -30,7 +30,22 @@ export function BpmnEditorPage() {
         const decodedText = atob(piperflowText);
         console.log('Decoded PiperFlow text:', decodedText);
         
-        // Использовать более надежный BPMN XML
+        // Check if this is actual PiperFlow content or just regular text
+        const isPiperflowFormat = 
+          decodedText.includes('title:') ||
+          decodedText.includes('pool:') ||
+          decodedText.includes('lane:') ||
+          (decodedText.includes('(') && decodedText.includes(')') && decodedText.includes('as'));
+        
+        if (!isPiperflowFormat) {
+          // If it's not PiperFlow format, just show the text without editor
+          setUseStaticView(true);
+          setDiagramTitle("Текстовый ответ (не диаграмма)");
+          setBpmnXml(undefined);
+          return;
+        }
+        
+        // Rest of the existing logic for PiperFlow processing
         const defaultDiagram = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -108,7 +123,27 @@ export function BpmnEditorPage() {
       } catch (err) {
         console.error("Error decoding PiperFlow:", err);
         
-        // Предоставляем временную диаграмму для отладки
+        // Instead of loading a default diagram, check if it's plain text
+        try {
+          // Try decoding as plain text
+          const plainText = decodeURIComponent(escape(atob(piperflowText)));
+          
+          if (!plainText.includes('title:') && !plainText.includes('pool:')) {
+            // This is likely just a text response, not a diagram - show it without editor
+            toast({
+              title: "Текстовый ответ",
+              description: "Полученный контент не является диаграммой BPMN"
+            });
+            setUseStaticView(true);
+            setDiagramTitle("Текстовый ответ");
+            setBpmnXml(undefined);
+            return;
+          }
+        } catch (e) {
+          // If decoding fails too, just use default
+        }
+        
+        // Use default diagram as fallback
         const defaultPiperflow = `title: Процесс заказа в интернет-магазине
 colourtheme: BLUEMOUNTAIN
 
@@ -256,9 +291,20 @@ footer: Тестовая диаграмма`;
               </p>
             ) : (
               <p className="mb-4 text-muted-foreground">
-                Интерактивный редактор BPMN недоступен для этой диаграммы. Отображается статичная версия:
+                {piperflowText && !bpmnXml ? 
+                  "Полученное содержимое не является диаграммой BPMN. Отображается как текст:" :
+                  "Интерактивный редактор BPMN недоступен для этой диаграммы. Отображается статичная версия:"}
               </p>
             )}
+            
+            {/* Show decoded text content if it's not a diagram */}
+            {piperflowText && !bpmnXml && (
+              <div className="max-w-3xl w-full mb-4 p-4 bg-white rounded border">
+                <pre className="whitespace-pre-wrap">{atob(piperflowText)}</pre>
+              </div>
+            )}
+            
+            {/* Always show image if available */}
             <img 
               src={`data:image/png;base64,${imageData}`}
               alt="BPMN diagram"

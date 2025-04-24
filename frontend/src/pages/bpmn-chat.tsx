@@ -130,10 +130,48 @@ export function BpmnChat() {
     setIsLoading(true)
     
     try {
-      // Расширенное определение запросов на генерацию BPMN диаграмм
+      // Quickly check if this is likely a BPMN diagram request to avoid unnecessary API calls
       const userInput = input.toLowerCase();
+      
+      // First-pass check: Does it clearly look like a non-BPMN request?
+      const isDefinitelyNotBpmn = 
+        userInput.includes('привет') ||
+        userInput.includes('здравствуй') ||
+        userInput.includes('добрый день') ||
+        userInput.includes('как дела') ||
+        userInput.includes('спасибо') ||
+        userInput.includes('расскажи о себе') ||
+        userInput.includes('кто ты') ||
+        userInput.includes('помоги с') ||
+        userInput.includes('что такое') ||
+        userInput.length < 15; // Very short requests unlikely to be diagram requests
+      
+      // Skip BPMN generation for clearly non-BPMN queries
+      if (isDefinitelyNotBpmn) {
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: "Ваш запрос не связан с созданием диаграммы BPMN. Пожалуйста, опишите бизнес-процесс, который вы хотите визуализировать.",
+          timestamp: new Date()
+        }
+        
+        setMessages(prev => [...prev, assistantMessage])
+        
+        // Save standard chat interaction to database
+        await chatApi.saveChatEntry({
+          user_id: user.id,
+          chat_id: chatId,
+          message: input.trim(),
+          response: assistantMessage.content
+        })
+        
+        setIsLoading(false)
+        return
+      }
+      
+      // Second-pass check: Detailed examination for BPMN relevance 
       const isBpmnRequest = 
-        // Явные запросы
+        // Explicit diagram requests
         userInput.includes('диаграмм') || 
         userInput.includes('bpmn') ||
         userInput.includes('схема процесса') ||
@@ -144,7 +182,7 @@ export function BpmnChat() {
         userInput.includes('построй') ||
         userInput.includes('показать процесс') ||
         userInput.includes('визуализируй') ||
-        // Неявные запросы на процессы
+        // Implicit process requests
         (userInput.includes('процесс') && 
           (
             userInput.includes('заказ') || 
@@ -164,67 +202,45 @@ export function BpmnChat() {
       let imageData = '';
       let bpmnXml = '';
       let piperflowText = '';
+      let isBpmnResponse = false;
       
-      // Если определили запрос на BPMN диаграмму, генерируем ее
-      if (isBpmnRequest) {
-        try {
-          console.log('Sending BPMN generation request for:', input.trim());
-          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
-          console.log('BPMN result received:', bpmnResult);
+      // Generate a unique request ID for this interaction
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
+      try {
+        // If it's likely a BPMN request OR we're not sure yet, send to API
+        const bpmnResult = await chatApi.generateBpmnDiagram(input.trim(), requestId);
+        
+        // Check if the API determined this is a BPMN request AND generated content
+        if (bpmnResult.success && bpmnResult.image && 
+            (isBpmnRequest || bpmnResult.is_bpmn_request)) {
           
-          if (bpmnResult.success && bpmnResult.image) {
-            response = "Вот созданная BPMN диаграмма на основе вашего описания:";
-            imageData = bpmnResult.image;
-            
-            // Save the PiperFlow text for the BPMN editor
-            if (bpmnResult.text) {
-              piperflowText = bpmnResult.text;
-              console.log('PiperFlow text received from API:', piperflowText);
-              
-              try {
-                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-                console.log('BPMN XML converted successfully, length:', bpmnXml.length);
-              } catch (convError) {
-                console.error('Error converting PiperFlow to BPMN XML:', convError);
-                toast({
-                  title: "Ошибка преобразования",
-                  description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
-                  variant: "destructive"
-                });
-              }
-            } else {
-              console.warn('No PiperFlow text in the API response');
-            }
-          } else {
-            response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
-            console.error('BPMN generation failed:', bpmnResult.error);
-          }
-        } catch (error) {
-          console.error('Error calling BPMN generation API:', error);
-          response = "Ошибка при создании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
-        }
-      } else {
-        // Отправляем запрос на генерацию BPMN диаграммы, даже если не распознали явно
-        // Это позволит модели самой решить, подходит ли запрос для создания диаграммы
-        try {
-          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
+          // Respond with appropriate message based on whether it was explicitly or implicitly a BPMN request
+          response = isBpmnRequest 
+            ? "Вот созданная BPMN диаграмма на основе вашего описания:" 
+            : "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
           
-          if (bpmnResult.success && bpmnResult.image) {
-            response = "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
-            imageData = bpmnResult.image;
+          imageData = bpmnResult.image;
+          isBpmnResponse = true;
+          
+          // Process PiperFlow text if available
+          if (bpmnResult.text) {
+            piperflowText = bpmnResult.text;
             
-            // Save the PiperFlow text for the BPMN editor
-            if (bpmnResult.text) {
-              piperflowText = bpmnResult.text;
+            try {
               bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+            } catch (convError) {
+              console.error('Error converting PiperFlow to BPMN XML:', convError);
             }
-          } else {
-            // Стандартный ответ для обычных сообщений
-            response = "Кажется ваш запрос не связан с созданием диаграммы.";
           }
-        } catch (error) {
-          response = "Непридвиденная ошибка.";
+        } else {
+          // Not a BPMN request - display the text response
+          response = bpmnResult.text || 
+                     "К сожалению, я не смог обработать ваш запрос как запрос на создание диаграммы.";
         }
+      } catch (error) {
+        console.error('Error calling API:', error);
+        response = "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз.";
       }
       
       // Add assistant message to UI
@@ -233,17 +249,14 @@ export function BpmnChat() {
         role: 'assistant',
         content: response,
         timestamp: new Date(),
-        image: imageData || undefined,
-        bpmnXml: bpmnXml || undefined,
-        piperflowText: piperflowText || undefined
+        // Only include BPMN-related properties if this is a BPMN response
+        ...(isBpmnResponse ? {
+          image: imageData,
+          bpmnXml: bpmnXml || undefined,
+          piperflowText: piperflowText || undefined
+        } : {})
       }
       
-      console.log('Creating assistant message with:', {
-        hasBpmnXml: !!bpmnXml,
-        hasPiperflowText: !!piperflowText,
-        hasImage: !!imageData
-      });
-
       setMessages(prev => [...prev, assistantMessage])
       
       // Save the message exchange to the database
@@ -252,37 +265,37 @@ export function BpmnChat() {
         chat_id: chatId,
         message: input.trim(),
         response: response,
-        image: imageData || undefined,
-        piperflow_text: piperflowText || undefined
+        // Only include BPMN-related properties if this is a BPMN response
+        ...(isBpmnResponse ? {
+          image: imageData,
+          piperflow_text: piperflowText || undefined
+        } : {})
       })
       
-      // Если сообщений не было (первое сообщение в чате), обновляем название чата
+      // If this is the first message in the chat, update the chat name
       if (messages.length === 0 || (messages.length === 1 && messages[0].role === 'assistant')) {
         try {
-          // Обрезаем длинные сообщения для названия чата
-          const maxLength = 30
-          let chatName = input.trim()
+          const maxLength = 30;
+          let chatName = input.trim();
           
           if (chatName.length > maxLength) {
-            chatName = chatName.substring(0, maxLength) + '...'
+            chatName = chatName.substring(0, maxLength) + '...';
           }
           
-          // Обновляем название чата
-          await chatApi.updateChat(chatId, { name: chatName })
-          console.log("Chat name updated to first message:", chatName)
+          await chatApi.updateChat(chatId, { name: chatName });
         } catch (error) {
-          console.error("Error updating chat name:", error)
+          console.error("Error updating chat name:", error);
         }
       }
     } catch (error) {
-      console.error("Error processing message:", error)
+      console.error("Error processing message:", error);
       toast({
         title: "Ошибка",
         description: "Не удалось обработать сообщение",
         variant: "destructive"
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
@@ -480,7 +493,7 @@ export function BpmnChat() {
           </Button>
         </div>
         
-        {/* Use the BpmnEditor component if we have BPMN XML */}
+        {/* Only show BPMN editor if we have BPMN XML */}
         {message.bpmnXml ? (
           <div className="mt-4 w-full">
             <div className="rounded bg-white border shadow-sm overflow-hidden" 
@@ -563,6 +576,10 @@ export function BpmnChat() {
                   const params = new URLSearchParams();
                   if (message.image) {
                     params.set('image', message.image);
+                  }
+                  if (message.piperflowText) {
+                    const cleanText = message.piperflowText.replace(/[\r\n]+/g, '\n').trim();
+                    params.set('piperflow', btoa(cleanText));
                   }
                   window.open(`/diagram-editor?${params.toString()}`, '_blank');
                 }}
