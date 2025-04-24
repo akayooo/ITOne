@@ -31,11 +31,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         elements: Array<{
           type: 'start' | 'end' | 'task' | 'gateway';
           id: string;
+          originalId: string; // Сохраняем оригинальный ID
           name?: string;
         }>;
         flows: Array<{
           sourceRef: string;
           targetRef: string;
+          originalSourceRef: string; // Сохраняем оригинальные ID
+          originalTargetRef: string;
           condition?: string;
         }>;
       }>;
@@ -43,6 +46,33 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
     
     let currentPool: typeof pools[0] | null = null;
     let currentLane: typeof pools[0]['lanes'][0] | null = null;
+    
+    // Словарь для преобразования кириллических/специальных ID в безопасные ID
+    const idMapping: Record<string, string> = {};
+    
+    // Функция для создания безопасного ID
+    const createSafeId = (originalId: string): string => {
+      // Проверяем, не создавали ли мы уже безопасный ID для этого оригинального ID
+      if (idMapping[originalId]) {
+        return idMapping[originalId];
+      }
+      
+      // Создаем безопасный ID, удаляя нелатинские символы и заменяя их на транслитерацию или safe_ префикс
+      let safeId = '';
+      
+      if (/^[a-zA-Z0-9_]+$/.test(originalId)) {
+        // Если ID уже безопасный, используем его напрямую
+        safeId = originalId;
+      } else {
+        // Иначе создаем новый ID на основе оригинального
+        safeId = 'id_' + generateId();
+      }
+      
+      // Сохраняем маппинг
+      idMapping[originalId] = safeId;
+      console.log(`ID mapping: ${originalId} -> ${safeId}`);
+      return safeId;
+    };
     
     for (const line of lines) {
       const trimmed = line.trim();
@@ -74,11 +104,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
       if (currentLane) {
         // Start event: (start) as start_event
         if (trimmed.includes('(start)')) {
-          const match = trimmed.match(/\(start\)\s+as\s+(\w+)/);
+          const match = trimmed.match(/\(start\)\s+as\s+(\S+)/);
           if (match) {
+            const originalId = match[1];
+            const safeId = createSafeId(originalId);
             currentLane.elements.push({
               type: 'start',
-              id: match[1]
+              id: safeId,
+              originalId: originalId
             });
           }
           continue;
@@ -86,11 +119,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         
         // End event: (end) as end_event
         if (trimmed.includes('(end)')) {
-          const match = trimmed.match(/\(end\)\s+as\s+(\w+)/);
+          const match = trimmed.match(/\(end\)\s+as\s+(\S+)/);
           if (match) {
+            const originalId = match[1];
+            const safeId = createSafeId(originalId);
             currentLane.elements.push({
               type: 'end',
-              id: match[1]
+              id: safeId,
+              originalId: originalId
             });
           }
           continue;
@@ -98,11 +134,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         
         // Task: [Task name] as task_id
         if (trimmed.includes('[') && trimmed.includes(']')) {
-          const match = trimmed.match(/\[(.*?)\]\s+as\s+(\w+)/);
+          const match = trimmed.match(/\[(.*?)\]\s+as\s+(\S+)/);
           if (match) {
+            const originalId = match[2];
+            const safeId = createSafeId(originalId);
             currentLane.elements.push({
               type: 'task',
-              id: match[2],
+              id: safeId,
+              originalId: originalId,
               name: match[1]
             });
           }
@@ -111,11 +150,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         
         // Gateway: <Gateway?> as gateway_id
         if (trimmed.includes('<') && trimmed.includes('>')) {
-          const match = trimmed.match(/<(.*?)>\s+as\s+(\w+)/);
+          const match = trimmed.match(/<(.*?)>\s+as\s+(\S+)/);
           if (match) {
+            const originalId = match[2];
+            const safeId = createSafeId(originalId);
             currentLane.elements.push({
               type: 'gateway',
-              id: match[2],
+              id: safeId,
+              originalId: originalId,
               name: match[1]
             });
           }
@@ -132,19 +174,38 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
             
             const pathParts = flowPath.split('->').map(p => p.trim());
             if (pathParts.length >= 2) {
+              const originalSourceRef = pathParts[0];
+              const originalTargetRef = pathParts[1];
+              
+              // Используем безопасные ID из созданных mapping, но если не найдено, 
+              // используем createSafeId для генерации безопасного ID из оригинального
+              const sourceRef = idMapping[originalSourceRef] || createSafeId(originalSourceRef);
+              const targetRef = idMapping[originalTargetRef] || createSafeId(originalTargetRef);
+              
               currentLane.flows.push({
-                sourceRef: pathParts[0],
-                targetRef: pathParts[1],
-                condition: condition
+                sourceRef,
+                targetRef,
+                originalSourceRef,
+                originalTargetRef,
+                condition
               });
             }
           } else {
             // Standard flows without conditions
             const pathParts = trimmed.split('->').map(p => p.trim());
             for (let i = 0; i < pathParts.length - 1; i++) {
+              const originalSourceRef = pathParts[i];
+              const originalTargetRef = pathParts[i + 1];
+              
+              // Используем безопасные ID из созданных mapping
+              const sourceRef = idMapping[originalSourceRef] || createSafeId(originalSourceRef);
+              const targetRef = idMapping[originalTargetRef] || createSafeId(originalTargetRef);
+              
               currentLane.flows.push({
-                sourceRef: pathParts[i],
-                targetRef: pathParts[i + 1]
+                sourceRef,
+                targetRef,
+                originalSourceRef,
+                originalTargetRef
               });
             }
           }
@@ -157,6 +218,40 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
       console.error('No pools found in PiperFlow text');
       return EMPTY_DIAGRAM;
     }
+    
+    // Проверка на несоответствия в ID
+    let hasErrors = false;
+    
+    pools.forEach(pool => {
+      pool.lanes.forEach(lane => {
+        // Создаем множество всех ID элементов
+        const elementIds = new Set(lane.elements.map(el => el.id));
+        const originalIdMap = new Map();
+        
+        // Сохраняем соответствие оригинальных и безопасных ID
+        lane.elements.forEach(el => {
+          originalIdMap.set(el.originalId, el.id);
+        });
+        
+        // Проверяем, что все ссылки в потоках указывают на существующие элементы
+        lane.flows.forEach(flow => {
+          if (!elementIds.has(flow.sourceRef)) {
+            console.warn(`Warning: Flow source "${flow.sourceRef}" (original: "${flow.originalSourceRef}") not found in elements`);
+            // Не считаем это критической ошибкой - может быть ссылка на элемент из другой дорожки
+          }
+          if (!elementIds.has(flow.targetRef)) {
+            console.warn(`Warning: Flow target "${flow.targetRef}" (original: "${flow.originalTargetRef}") not found in elements`);
+            // Не считаем это критической ошибкой - может быть ссылка на элемент из другой дорожки
+          }
+        });
+      });
+    });
+    
+    // Убираем возврат шаблона при мелких ошибках - отображаем диаграмму в любом случае
+    // if (hasErrors) {
+    //   console.warn('Found errors in BPMN conversion. Using fallback diagram.');
+    //   return EMPTY_DIAGRAM;
+    // }
     
     // Build the BPMN XML
     // Include xsi namespace for the condition expressions
