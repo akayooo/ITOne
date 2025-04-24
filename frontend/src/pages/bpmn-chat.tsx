@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { SendIcon, MicIcon, XIcon, Loader2 } from "lucide-react"
+import { SendIcon, MicIcon, XIcon, Loader2, Copy, Check } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { ChatHistoryEntry, chatApi } from "@/lib/api"
 import { useAuthStore } from "@/lib/auth"
@@ -42,6 +42,7 @@ export function BpmnChat() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
 
   // Get chat ID from URL
   const params = new URLSearchParams(location.search)
@@ -433,7 +434,26 @@ export function BpmnChat() {
   // Check if current user can interact with this chat
   const canInteract = Boolean(chatId && user?.id)
 
-  // Update the message rendering to include images
+  // Function to copy message text to clipboard
+  const copyMessageToClipboard = (messageId: string, text: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopiedMessageId(messageId);
+        setTimeout(() => {
+          setCopiedMessageId(null);
+        }, 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to copy message:", err);
+        toast({
+          title: "Ошибка",
+          description: "Не удалось скопировать сообщение",
+          variant: "destructive"
+        });
+      });
+  };
+
+  // Update the message rendering to include images and a copy button
   const renderMessage = (message: Message) => (
     <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
       <div 
@@ -443,7 +463,22 @@ export function BpmnChat() {
             : 'bg-muted'
         }`}
       >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <div className="flex items-start justify-between">
+          <p className="whitespace-pre-wrap break-words flex-1">{message.content}</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`ml-2 h-7 w-7 flex-shrink-0 ${message.role === 'user' ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+            onClick={() => copyMessageToClipboard(message.id, message.content)}
+            title="Скопировать сообщение"
+          >
+            {copiedMessageId === message.id ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
         
         {/* Use the BpmnEditor component if we have BPMN XML */}
         {message.bpmnXml ? (

@@ -330,9 +330,12 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
     
     // Add pool shapes with coordinates
     let poolY = 0;
-    const POOL_HEIGHT = 300;
-    const LANE_HEIGHT = 200;
-    const POOL_WIDTH = 800;
+    const POOL_HEIGHT = 600;
+    const LANE_HEIGHT = 500;
+    const POOL_WIDTH = 1200;
+    const HORIZONTAL_SPACING = 180;
+    const VERTICAL_SPACING = 150;
+    const ELEMENT_SPACING = 250;
     
     // Add pools
     pools.forEach((pool, poolIndex) => {
@@ -356,7 +359,6 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
       </bpmndi:BPMNShape>`;
         
         // Add elements with positions
-        const ELEMENT_SPACING = 180; // Increased spacing
         const START_X = 250;
         const MIDDLE_Y = laneY + laneHeight / 2;
         
@@ -431,7 +433,9 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
           }
         });
         
-        const maxLevel = Math.max(...Object.values(elementLevels), 0);
+        const maxLevel = Object.values(elementLevels).length > 0 
+          ? Math.max(...Object.values(elementLevels)) 
+          : 0;
         
         // Position elements based on levels
         const elementPositions: Record<string, {x: number, y: number, height: number, width: number}> = {};
@@ -451,16 +455,16 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
             elements.forEach((elem, idx) => {
               const y = startY + (idx + 1) * elemSpacing;
               
-              let width = 100;
-              let height = 80;
+              let width = 180;
+              let height = 100;
               
               // Adjust dimensions based on element type
               if (elem.type === 'start' || elem.type === 'end') {
                 width = 36;
                 height = 36;
               } else if (elem.type === 'gateway') {
-                width = 50;
-                height = 50;
+                width = 60;
+                height = 60;
               }
               
               elementPositions[elem.id] = {
@@ -476,7 +480,126 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         // Add shapes for each element
         lane.elements.forEach(element => {
           const pos = elementPositions[element.id] || 
-                     { x: START_X, y: MIDDLE_Y - 40, width: 100, height: 80 };
+                     { x: START_X, y: MIDDLE_Y - 40, width: 180, height: 100 };
+          
+          // Significantly improve how we handle gateway branches - track them separately
+          // Check if this element follows from a gateway and which output branch it belongs to
+          let gatewayBranchIndex = -1;
+          let totalGatewayBranches = 0;
+          let sourceGatewayId = null;
+          
+          // Find if element is part of a gateway branch flow
+          lane.flows.some(flow => {
+            // If this element is a target of a flow from a gateway element
+            if (flow.targetRef === element.id) {
+              // Check if source is a gateway
+              const sourceElement = lane.elements.find(el => el.id === flow.sourceRef);
+              if (sourceElement?.type === 'gateway') {
+                // Found a gateway source - now determine which branch this is
+                sourceGatewayId = sourceElement.id;
+                
+                // Count total branches from this gateway
+                totalGatewayBranches = lane.flows.filter(f => f.sourceRef === sourceElement.id).length;
+                
+                // Determine which branch number this is
+                const gatewayFlows = lane.flows.filter(f => f.sourceRef === sourceElement.id);
+                gatewayBranchIndex = gatewayFlows.findIndex(f => f.targetRef === element.id);
+                
+                return true;
+              }
+            }
+            return false;
+          });
+          
+          // Apply much stronger vertical positioning for gateway branches
+          if (gatewayBranchIndex >= 0 && totalGatewayBranches > 1) {
+            // Have multiple branches from a gateway - apply clear vertical separation
+            const branchHeight = 250;
+            const totalHeight = (totalGatewayBranches - 1) * branchHeight;
+            
+            // Calculate Y position based on branch index
+            // Center the branches vertically around the gateway
+            const baseY = elementPositions[sourceGatewayId]?.y || MIDDLE_Y;
+            let branchY = baseY - totalHeight/2 + gatewayBranchIndex * branchHeight;
+            
+            // Top branch should be higher, bottom branch lower
+            if (gatewayBranchIndex === 0) {
+              branchY -= 50; // Move first branch up more
+            } else if (gatewayBranchIndex === totalGatewayBranches - 1) {
+              branchY += 50; // Move last branch down more
+            }
+            
+            // Adjust the position with much more space
+            pos.y = branchY;
+            
+            // Also adjust all downstream elements to follow this branch's Y position
+            // This is a recursive function to position all elements in this branch
+            const adjustDownstreamElements = (elemId: string, baseYPos: number) => {
+              // Find all flows where this element is the source
+              const outFlows = lane.flows.filter(f => f.sourceRef === elemId);
+              
+              outFlows.forEach(flow => {
+                const targetId = flow.targetRef;
+                const targetPos = elementPositions[targetId];
+                
+                if (targetPos) {
+                  // Adjust Y position to match this branch
+                  targetPos.y = baseYPos;
+                  
+                  // Continue with downstream elements
+                  adjustDownstreamElements(targetId, baseYPos);
+                }
+              });
+            };
+            
+            // Apply downstream adjustments
+            adjustDownstreamElements(element.id, branchY);
+          } else if (gatewayBranchIndex < 0) {
+            // If the element is after a gateway but not directly connected
+            // Check if any of its predecessors are part of a gateway branch
+            const findUpstreamGatewayBranch = (elemId: string, visited = new Set<string>()): number => {
+              if (visited.has(elemId)) return -1;
+              visited.add(elemId);
+              
+              // Check all incoming flows
+              const inFlows = lane.flows.filter(f => f.targetRef === elemId);
+              
+              for (const flow of inFlows) {
+                const sourceId = flow.sourceRef;
+                const sourceElement = lane.elements.find(el => el.id === sourceId);
+                
+                if (sourceElement?.type === 'gateway') {
+                  // Direct predecessor is a gateway
+                  return 0;
+                }
+                
+                // Check if the predecessor is part of a gateway branch
+                const upstreamBranch = findUpstreamGatewayBranch(sourceId, visited);
+                if (upstreamBranch >= 0) {
+                  return upstreamBranch + 1; // Increment depth
+                }
+              }
+              
+              return -1; // Not part of a gateway branch
+            };
+            
+            const branchDepth = findUpstreamGatewayBranch(element.id);
+            
+            // If this element is in a branch path (but not directly connected to gateway)
+            if (branchDepth > 0) {
+              // Find the Y position of its predecessor
+              const inFlows = lane.flows.filter(f => f.targetRef === element.id);
+              if (inFlows.length > 0) {
+                const sourceId = inFlows[0].sourceRef;
+                const sourcePos = elementPositions[sourceId];
+                
+                if (sourcePos) {
+                  // Align with predecessor's Y position to maintain branch flow
+                  pos.y = sourcePos.y;
+                }
+              }
+            }
+          }
           
           let shapeDef = '';
           
@@ -504,16 +627,16 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
             case 'task':
               shapeDef = `
       <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
-        <dc:Bounds x="${pos.x}" y="${pos.y}" width="100" height="80" />
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="180" height="100" />
       </bpmndi:BPMNShape>`;
               break;
               
             case 'gateway':
               shapeDef = `
       <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
-        <dc:Bounds x="${pos.x}" y="${pos.y}" width="50" height="50" />
+        <dc:Bounds x="${pos.x}" y="${pos.y}" width="60" height="60" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="${pos.x - 15}" y="${pos.y - 20}" width="80" height="14" />
+          <dc:Bounds x="${pos.x - 35}" y="${pos.y - 25}" width="130" height="20" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>`;
               break;
@@ -536,13 +659,14 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
             let targetX = targetPos.x;
             let targetY = targetPos.y + targetPos.height/2;
             
-            // Create a path with waypoints
+            // Improved path routing with better vertical spacing
             bpmnXml += `
       <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">
         <di:waypoint x="${sourceX}" y="${sourceY}" />`;
             
-            // Add intermediate waypoint if there's significant vertical distance
-            if (Math.abs(sourceY - targetY) > 30) {
+            // Add better intermediate waypoints with more vertical space
+            // Lower threshold to ensure more waypoints are added
+            if (Math.abs(sourceY - targetY) > 20) {
               const midX = (sourceX + targetX) / 2;
               bpmnXml += `
         <di:waypoint x="${midX}" y="${sourceY}" />
@@ -559,7 +683,7 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
               
               bpmnXml += `
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="${labelX - 40}" y="${labelY}" width="80" height="14" />
+          <dc:Bounds x="${labelX - 60}" y="${labelY}" width="120" height="28" />
         </bpmndi:BPMNLabel>`;
             }
             
@@ -569,8 +693,9 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
         });
         
         laneY += laneHeight;
-      });
-    });
+      }); // End of lane forEach
+      
+    }); // End of pool forEach
     
     bpmnXml += `
     </bpmndi:BPMNPlane>

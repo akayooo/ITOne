@@ -8,6 +8,8 @@ import logging
 import tempfile
 import pathlib
 import uuid
+import asyncio
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +25,9 @@ except ImportError:
 
 from .api import call_deepseek_api
 from .processpiper_wrapper import render_to_base64
+
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 1
 
 async def generate_bpmn_diagram(description: str) -> Dict[str, Any]:
     """
@@ -47,15 +52,38 @@ async def generate_bpmn_diagram(description: str) -> Dict[str, Any]:
         # Replace any double quotes that might cause syntax issues
         piperflow_text = piperflow_text.replace('"', '')
         
-        # Используем безопасную обертку для рендеринга
-        logger.info("Generating diagram using safe wrapper")
-        image_base64 = render_to_base64(piperflow_text)
-        
+        image_base64 = None
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                # Используем безопасную обертку для рендеринга
+                logger.info(f"Attempt {attempt + 1}/{MAX_RETRIES}: Generating diagram using safe wrapper")
+                image_base64 = render_to_base64(piperflow_text)
+
+                if image_base64:
+                    logger.info("Diagram generated successfully.")
+                    break # Exit loop on success
+                else:
+                    last_error = "Failed to generate diagram (render_to_base64 returned None)"
+                    logger.warning(f"Attempt {attempt + 1} failed: {last_error}")
+
+            except Exception as e:
+                last_error = f"Exception during rendering attempt {attempt + 1}: {str(e)}"
+                logger.warning(last_error)
+                # Optional: Log traceback for debugging
+                # import traceback
+                # traceback.print_exc()
+
+            # If not the last attempt and failed, wait before retrying
+            if attempt < MAX_RETRIES - 1 and not image_base64:
+                logger.info(f"Waiting {RETRY_DELAY_SECONDS}s before next attempt...")
+                await asyncio.sleep(RETRY_DELAY_SECONDS) # Use asyncio.sleep in async function
+
         if not image_base64:
-            logger.error("Failed to generate diagram")
+            logger.error(f"Failed to generate diagram after {MAX_RETRIES} attempts. Last error: {last_error}")
             return {
                 "success": False,
-                "error": "Failed to generate diagram"
+                "error": last_error or "Failed to generate diagram after retries" # Use last error if available
             }
         
         # Возвращаем результат
