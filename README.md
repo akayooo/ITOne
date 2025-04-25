@@ -175,6 +175,15 @@ ITOne/
     *   **(Критично)** Запустите **локальный Deepseek API сервер**: Перейдите в `services/deepseek-api/` и запустите `python server.py` (убедитесь, что модель `MODEL_ID` загружена).
     *   **(Критично)** Запустите **Speech-to-Text сервер**: Перейдите в `services/speech_to_text_service/` и запустите `python server.py` (предварительно может потребоваться `python download_and_initialize_model.py`).
     *   **(Критично)** Запустите **основной FastAPI сервер**: Вернитесь в `Backend/` и запустите `uvicorn main:app --reload --host 0.0.0.0 --port 8000`.
+    *   **macOS:** `brew install tesseract`
+    *   **Ubuntu/Debian:** `sudo apt-get update && sudo apt-get install tesseract-ocr libtesseract-dev`
+    *   **Windows:** Скачайте установщик с [официального репозитория Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) и добавьте его в PATH.
+
+    * **Запустите ocr**
+    Используйте `uvicorn` для запуска FastAPI приложения. Флаг `--reload` автоматически перезапускает сервер при изменении кода.
+    ```bash
+    uvicorn main:app --reload --host 0.0.0.0 --port 8001
+    ```
 6.  **Настройте фронтенд:**
     *   Перейдите в `frontend/`.
     *   Установите зависимости: `npm install`.

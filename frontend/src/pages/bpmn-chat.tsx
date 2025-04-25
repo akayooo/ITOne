@@ -1,13 +1,18 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { SendIcon, MicIcon, XIcon, Loader2, Copy, Check } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { SendIcon, MicIcon, XIcon, Loader2, Copy, Check, Paperclip } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { ChatHistoryEntry, chatApi } from "@/lib/api"
 import { useAuthStore } from "@/lib/auth"
 import { BpmnEditor } from "@/components/bpmn-editor/BpmnEditor"
 import { convertPiperflowToBpmn } from "@/lib/bpmn-service"
+import axios from 'axios'
+
+// URL for the OCR backend service
+const OCR_API_URL = 'http://localhost:8001/ocr';
 
 // Add TypeScript declaration for webkitAudioContext
 declare global {
@@ -40,7 +45,10 @@ export function BpmnChat() {
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [speechStatus, setSpeechStatus] = useState('')
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast()
   const wsRef = useRef<WebSocket | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -631,24 +639,96 @@ export function BpmnChat() {
     </div>
   )};
 
+  // --- OCR PDF Handling ---
+  const handlePdfUploadClick = () => {
+    fileInputRef.current?.click(); // Trigger hidden file input
+  };
+
+  const handlePdfFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      event.target.value = ''; // Reset file input
+
+      if (file.type !== 'application/pdf') {
+        setOcrError('Пожалуйста, выберите PDF файл.');
+        toast({
+          title: "Неверный тип файла",
+          description: "Можно загружать только PDF файлы.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsOcrLoading(true);
+      setOcrError(null);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await axios.post<{ text: string; pages: number }>(
+          OCR_API_URL,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+        // Insert extracted text into the input field
+        setInput(prevInput => prevInput + response.data.text);
+        toast({
+          title: "Текст извлечен",
+          description: `Текст из файла "${file.name}" добавлен в поле ввода.`,
+        });
+
+      } catch (err: any) {
+        console.error('Error uploading or processing PDF file:', err);
+        let errorMessage = 'Произошла ошибка при обработке PDF файла.';
+        if (axios.isAxiosError(err) && err.response) {
+          errorMessage = err.response.data?.detail || err.message;
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+        setOcrError(`Ошибка OCR: ${errorMessage}`);
+        toast({
+          title: "Ошибка OCR",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setIsOcrLoading(false);
+      }
+    }
+  }, [toast]);
+  // --- End OCR PDF Handling ---
+
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+  };
+
+  if (!chatId) {
+     return (
+      <div className="flex flex-col h-full items-center justify-center text-muted-foreground">
+        Выберите или создайте чат для начала работы.
+      </div>
+    );
+  }
+
+  if (isLoadingHistory) {
+     return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="mt-2 text-muted-foreground">Загрузка истории чата...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat messages */}
       <div className="flex-1 p-4 overflow-y-auto">
-        {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="animate-spin h-6 w-6 mr-2" />
-            <span>Загрузка истории...</span>
-          </div>
-        ) : messages.length > 0 ? (
-          <div className="mx-auto max-w-7xl w-full">
-            {messages.map(renderMessage)}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Начните новый разговор</p>
-          </div>
-        )}
+        {messages.map(renderMessage)}
         <div ref={messagesEndRef} />
       </div>
       
@@ -662,29 +742,56 @@ export function BpmnChat() {
         )}
         
         <form onSubmit={handleSubmit} className="flex space-x-2 max-w-7xl mx-auto">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={canInteract ? "Введите сообщение..." : "Выберите чат для начала общения"}
-            className="flex-1"
-            disabled={!canInteract || isLoading}
+          {/* Hidden File Input for PDF */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handlePdfFileChange}
+            accept=".pdf"
+            style={{ display: 'none' }}
+            disabled={isOcrLoading}
           />
+
+          {/* PDF Upload Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handlePdfUploadClick}
+            disabled={isLoading || isRecording || isOcrLoading}
+            aria-label="Загрузить PDF"
+          >
+            {isOcrLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Paperclip className="h-5 w-5" />
+            )}
+          </Button>
           
           <Button 
             type="button" 
             size="icon"
             variant="outline"
             onClick={toggleRecording}
-            disabled={!canInteract || isLoading}
+            disabled={!canInteract || isLoading || isRecording || isOcrLoading}
             className={isRecording ? 'bg-red-100 hover:bg-red-200 text-red-500' : ''}
           >
             {isRecording ? <XIcon className="h-5 w-5" /> : <MicIcon className="h-5 w-5" />}
           </Button>
           
+          <Textarea
+            value={input}
+            onChange={handleInputChange}
+            placeholder={isRecording ? speechStatus : "Введите сообщение..."}
+            className="flex-1 resize-none min-h-[40px]"
+            rows={1}
+            disabled={isLoading || isRecording || isOcrLoading}
+          />
+          
           <Button 
             type="submit" 
             size="icon"
-            disabled={!input.trim() || !canInteract || isLoading}
+            disabled={input.trim() === '' || !canInteract || isLoading || isRecording || isOcrLoading}
           >
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -693,6 +800,10 @@ export function BpmnChat() {
             )}
           </Button>
         </form>
+        
+        {ocrError && (
+          <p className="text-xs text-destructive mt-1">{ocrError}</p>
+        )}
       </div>
     </div>
   )
