@@ -28,7 +28,7 @@ class ChatResponse(ChatBase):
 class ChatHistoryBase(BaseModel):
     message: str
     response: str
-    image: Optional[str] = None  # Base64 encoded image for BPMN diagrams
+    recommendations: Optional[str] = None  # Recommendations for BPMN diagrams
     piperflow_text: Optional[str] = None  # PiperFlow text for BPMN diagrams
 
 

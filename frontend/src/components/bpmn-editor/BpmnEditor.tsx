@@ -3,7 +3,7 @@ import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import { Button } from "@/components/ui/button";
-import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, Image, FileText, Share2, Lightbulb } from "lucide-react";
+import { Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, FileText, Lightbulb } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { chatApi } from "@/lib/api";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,20 +32,51 @@ interface RecommendationPanelProps {
   onApplyRecommendations: (recommendations: string) => void;
 }
 
-function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommendations }: RecommendationPanelProps) {
-  const [recommendations, setRecommendations] = useState<string>("");
+function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommendations, initialRecommendations }: RecommendationPanelProps & { initialRecommendations?: string }) {
+  const [recommendations, setRecommendations] = useState<string>(initialRecommendations || "");
   const [recommendationItems, setRecommendationItems] = useState<{id: number, text: string, selected: boolean}[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  // Всегда отображаем панель для отладки
+  const [isOpen, setIsOpen] = useState(true);
   const { toast } = useToast();
 
+  // Добавляем отладочные логи
+  useEffect(() => {
+    console.log("RecommendationsPanel mounted");
+    console.log("initialRecommendations:", initialRecommendations);
+    console.log("piperflowText:", piperflowText);
+    console.log("currentProcess:", currentProcess);
+    
+    // Process initial recommendations if available
+    if (initialRecommendations) {
+      console.log("Processing initial recommendations");
+      const items = initialRecommendations.split(/\d+\./)
+        .filter(item => item.trim().length > 0)
+        .map((item, index) => ({
+          id: index,
+          text: item.trim(),
+          selected: true
+        }));
+      
+      console.log("Parsed recommendation items:", items);
+      setRecommendationItems(items);
+    } else {
+      console.log("No initial recommendations, fetching from API");
+      // Автоматически получаем рекомендации, если их нет
+      fetchRecommendations();
+    }
+  }, [initialRecommendations, piperflowText]);
+
   const fetchRecommendations = async () => {
+    console.log("Fetching recommendations");
     setIsLoading(true);
     setError(null);
     
     try {
+      console.log("Calling API with:", { piperflowText, currentProcess });
       const recsText = await chatApi.generateRecommendations(piperflowText, currentProcess);
+      console.log("Received recommendations:", recsText);
       setRecommendations(recsText);
       
       // Split recommendations into separate items
@@ -57,9 +88,10 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
           selected: true
         }));
       
+      console.log("Parsed recommendation items:", items);
       setRecommendationItems(items);
       setIsOpen(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching recommendations:', err);
       let errorMessage = 'Не удалось получить рекомендации';
       
@@ -107,7 +139,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       toast({
         title: "Внимание",
         description: "Не выбрано ни одной рекомендации",
-        variant: "warning"
+        variant: "destructive"
       });
     }
   };
@@ -227,24 +259,55 @@ interface BpmnEditorProps {
   initialDiagram?: string;
   readOnly?: boolean;
   onSave?: (xml: string) => void;
-  fallbackImage?: string | null;
   piperflowText?: string;
+  initialRecommendations?: string;
 }
 
 export function BpmnEditor({ 
   initialDiagram, 
   readOnly = false, 
   onSave,
-  fallbackImage,
-  piperflowText = ""
+  piperflowText = "",
+  initialRecommendations
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const modelerRef = useRef<any>(null);
+  const modelerRef = useRef<BpmnModeler | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [useFallbackImage, setUseFallbackImage] = useState(false);
   const { toast } = useToast();
+  const [xml, setXml] = useState<string>(initialDiagram || EMPTY_DIAGRAM);
+  const [scale, setScale] = useState(1);
+  const [currentProcess, setCurrentProcess] = useState(extractProcessDescription(piperflowText));
+  
+  // Тестовые рекомендации для отладки (если настоящие недоступны)
+  const testRecommendations = "1. Рекомендуется разделить большие блоки на более мелкие для улучшения читаемости.\n2. Добавьте более подробные описания к действиям.\n3. Используйте цветовые обозначения для разделения функциональных блоков.";
+  
+  // State for recommendations
+  const [hasAutoRecommendations, setHasAutoRecommendations] = useState(!!initialRecommendations);
+  
+  // Добавим отладочные логи
+  useEffect(() => {
+    console.log("BpmnEditor Component Props:", {
+      hasInitialDiagram: !!initialDiagram,
+      readOnly,
+      piperflowTextLength: piperflowText?.length || 0,
+      initialRecommendations: initialRecommendations || "none"
+    });
+  }, [initialDiagram, readOnly, piperflowText, initialRecommendations]);
+  
+  // Extract process description from PiperFlow
+  function extractProcessDescription(text: string): string {
+    // Extract title from PiperFlow
+    const titleMatch = text.match(/title:\s*(.+)/);
+    const title = titleMatch && titleMatch[1] ? titleMatch[1].trim() : "";
+    
+    // Extract footer from PiperFlow (if exists)
+    const footerMatch = text.match(/footer:\s*(.+)/);
+    const footer = footerMatch && footerMatch[1] ? footerMatch[1].trim() : "";
+    
+    return `${title}${footer ? `: ${footer}` : ""}`;
+  }
 
   // Handle initialization and cleanup
   useEffect(() => {
@@ -329,7 +392,7 @@ export function BpmnEditor({
           }
           
           try {
-            const canvas = modelerRef.current.get('canvas') as any;
+            const canvas = modelerRef.current?.get('canvas') as any;
             if (canvas) {
               // Fit diagram to viewport
               canvas.zoom('fit-viewport', 'auto');
@@ -344,21 +407,11 @@ export function BpmnEditor({
           console.error('Error importing BPMN diagram:', err);
           setError('Failed to import diagram');
           setIsLoading(false);
-          
-          // Switch to fallback image if available
-          if (fallbackImage) {
-            setUseFallbackImage(true);
-          }
         });
     } catch (err) {
       console.error('Exception during diagram import:', err);
       setError('Failed to process diagram');
       setIsLoading(false);
-      
-      // Switch to fallback image if available
-      if (fallbackImage) {
-        setUseFallbackImage(true);
-      }
     }
   };
 
@@ -388,7 +441,8 @@ export function BpmnEditor({
     
     try {
       modelerRef.current.saveXML({ format: true })
-        .then(({ xml }: { xml: string }) => {
+        .then((result: any) => {
+          const xml = result.xml;
           onSave(xml);
           toast({
             title: "Диаграмма сохранена",
@@ -410,40 +464,6 @@ export function BpmnEditor({
         description: "Не удалось сохранить диаграмму",
         variant: "destructive"
       });
-    }
-  };
-
-  // Function to export diagram
-  const handleExport = () => {
-    if (!modelerRef.current) return;
-    
-    try {
-      modelerRef.current.saveXML({ format: true })
-        .then(({ xml }: { xml: string }) => {
-          if (xml) {
-            const blob = new Blob([xml], { type: 'application/xml' });
-            const url = URL.createObjectURL(blob);
-            
-            const downloadLink = document.createElement('a');
-            downloadLink.href = url;
-            downloadLink.download = 'diagram.bpmn';
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-            
-            URL.revokeObjectURL(url);
-          }
-        })
-        .catch((err: any) => {
-          console.error('Error exporting BPMN diagram:', err);
-          toast({
-            title: "Ошибка",
-            description: "Не удалось экспортировать диаграмму",
-            variant: "destructive"
-          });
-        });
-    } catch (err) {
-      console.error('Exception during export operation:', err);
     }
   };
 
@@ -519,104 +539,12 @@ export function BpmnEditor({
     }, 100);
   };
 
-  const exportAsImage = async () => {
-    if (!modelerRef.current) return;
-    
-    try {
-      const canvas = modelerRef.current.get('canvas');
-      const viewport = canvas.viewbox();
-      
-      // Create a temporary canvas with the current viewport
-      const tempCanvas = document.createElement('canvas');
-      const context = tempCanvas.getContext('2d');
-      if (!context) throw new Error('Could not get canvas context');
-      
-      // Set canvas size to viewport
-      tempCanvas.width = viewport.width;
-      tempCanvas.height = viewport.height;
-      
-      // Get SVG element
-      const svg = containerRef.current?.querySelector('svg');
-      if (!svg) throw new Error('SVG element not found');
-      
-      // Convert SVG to string
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      
-      // Create image from SVG
-      const img = new globalThis.Image();
-      img.onload = () => {
-        context.drawImage(img, 0, 0);
-        // Convert to PNG
-        const pngUrl = tempCanvas.toDataURL('image/png');
-        
-        // Create download link
-        const link = document.createElement('a');
-        link.download = 'diagram.png';
-        link.href = pngUrl;
-        link.click();
-        
-        // Cleanup
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-      
-      toast({
-        title: "Экспорт изображения",
-        description: "Диаграмма успешно экспортирована как изображение"
-      });
-    } catch (err) {
-      console.error('Error exporting as image:', err);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось экспортировать изображение",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const exportAsPiperFlow = async () => {
-    if (!modelerRef.current) return;
-    
-    try {
-      const result = await modelerRef.current.saveXML({ format: true });
-      const xml = result.xml;
-      
-      // Convert BPMN XML to PiperFlow format
-      // This is a placeholder - implement actual conversion logic
-      const piperFlowText = `# PiperFlow Text Format\n${new Date().toISOString()}\n\n# Converted from BPMN\n`;
-      
-      // Create blob and download
-      const blob = new Blob([piperFlowText], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = 'diagram.piperflow';
-      link.href = url;
-      link.click();
-      
-      URL.revokeObjectURL(url);
-      
-      toast({
-        title: "Экспорт PiperFlow",
-        description: "Диаграмма успешно экспортирована в формат PiperFlow"
-      });
-    } catch (err) {
-      console.error('Error exporting as PiperFlow:', err);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось экспортировать в формат PiperFlow",
-        variant: "destructive"
-      });
-    }
-  };
-
   const exportAsBpmn = async () => {
     if (!modelerRef.current) return;
     
     try {
       const result = await modelerRef.current.saveXML({ format: true });
-      const xml = result.xml;
+      const xml = result.xml || '';
       
       // Create blob and download
       const blob = new Blob([xml], { type: 'application/xml' });
@@ -654,7 +582,7 @@ export function BpmnEditor({
         </div>
       )}
       
-      {error && !useFallbackImage && (
+      {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
           <div className="max-w-md p-6 bg-card shadow-lg rounded-lg border">
             <h3 className="text-lg font-semibold text-destructive mb-2">Ошибка загрузки редактора</h3>
@@ -686,9 +614,6 @@ export function BpmnEditor({
           {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
         <div className="h-6 border-l mx-1"></div>
-        <Button variant="outline" size="icon" onClick={exportAsImage} title="Экспорт как изображение">
-          <Image className="h-4 w-4" />
-        </Button>
         <Button variant="outline" size="icon" onClick={exportAsBpmn} title="Экспорт BPMN">
           <FileText className="h-4 w-4" />
         </Button>
@@ -699,36 +624,22 @@ export function BpmnEditor({
         )}
       </div>
       
-      {useFallbackImage && fallbackImage ? (
-        <div className="h-full flex flex-col items-center justify-center p-4">
-          <p className="mb-4 text-muted-foreground">
-            Используется статическое изображение, так как не удалось загрузить редактор:
-          </p>
-          <img 
-            src={fallbackImage} 
-            alt="BPMN diagram" 
-            className="max-w-full max-h-[80vh] object-contain border rounded-lg shadow-sm" 
-          />
-        </div>
-      ) : (
-        <div ref={containerRef} className="h-full" />
-      )}
+      <div ref={containerRef} className="h-full" />
       
-      {!useFallbackImage && piperflowText && (
-        <RecommendationsPanel 
-          piperflowText={piperflowText}
-          currentProcess="Текущий бизнес-процесс"
-          onApplyRecommendations={(recs) => {
-            toast({
-              title: "Рекомендации будут применены",
-              description: "Диаграмма будет обновлена согласно рекомендациям"
-            });
-            
-            // Here you would call the API to update the diagram with recommendations
-            console.log("Applying recommendations:", recs);
-          }}
-        />
-      )}
+      <RecommendationsPanel 
+        piperflowText={piperflowText}
+        currentProcess={currentProcess}
+        onApplyRecommendations={(recs) => {
+          toast({
+            title: "Рекомендации будут применены",
+            description: "Диаграмма будет обновлена согласно рекомендациям"
+          });
+          
+          // Here you would call the API to update the diagram with recommendations
+          console.log("Applying recommendations:", recs);
+        }}
+        initialRecommendations={initialRecommendations || testRecommendations}
+      />
     </div>
   );
 } 

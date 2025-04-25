@@ -17,6 +17,7 @@ export function BpmnEditorPage() {
   const diagramId = searchParams.get("id");
   const imageData = searchParams.get("image");
   const piperflowText = searchParams.get("piperflow");
+  const recommendations = searchParams.get("recommendations");
   
   const [diagramTitle, setDiagramTitle] = useState("Новая BPMN диаграмма");
   const [bpmnXml, setBpmnXml] = useState<string | undefined>(undefined);
@@ -159,9 +160,10 @@ pool: Process
     console.log('URL Parameters:', {
       diagramId,
       imageExists: !!imageData,
-      piperflowExists: !!piperflowText
+      piperflowExists: !!piperflowText,
+      hasRecommendations: !!recommendations
     });
-  }, [piperflowText, toast, diagramTitle, imageData]);
+  }, [piperflowText, toast, diagramTitle, imageData, recommendations]);
   
   const handleSave = (xml: string) => {
     // Here you would save the diagram XML to your backend
@@ -238,6 +240,7 @@ pool: Process
             initialDiagram={bpmnXml} 
             onSave={handleSave}
             piperflowText={piperflowText ? atob(piperflowText) : undefined}
+            initialRecommendations={recommendations ? atob(recommendations) : undefined}
           />
         ) : imageData ? (
           <div className="h-full flex flex-col items-center justify-center p-4">

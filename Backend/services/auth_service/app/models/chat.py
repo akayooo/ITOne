@@ -29,7 +29,7 @@ class ChatHistory(Base):
     chat_id = Column(Integer, ForeignKey("chats.id"))
     message = Column(Text)
     response = Column(Text)
-    image = Column(Text, nullable=True)  # For storing base64 encoded BPMN diagram images
+    recommendations = Column(Text, nullable=True)  # For storing BPMN diagram recommendations
     piperflow_text = Column(Text, nullable=True)  # For storing PiperFlow text for BPMN diagrams
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

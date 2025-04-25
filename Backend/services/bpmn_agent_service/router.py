@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import processpiper
-from processpiper.text2diagram import render
 import os
 from .api import call_deepseek_api
 
@@ -18,8 +17,8 @@ class BPMNResponse(BaseModel):
     status: str
     message: str
     piperflow_text: Optional[str] = None
-    diagram_path: Optional[str] = None
     error: Optional[str] = None
+    recommendations: Optional[str] = None
 
 # Templates for different types of prompts
 templates = {
@@ -244,17 +243,6 @@ def promt_template_creator_and_answer(user_promt: str, buisness: str, recomendat
     answer = call_deepseek_api(promt)
     return answer
 
-def create_diagram(piperflow_text: str) -> tuple[str, str]:
-    output_dir = "diagrams"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    output_file = os.path.join(output_dir, "process_diagram.png")
-    try:
-        render(piperflow_text, output_file)
-        return "success", output_file
-    except Exception as e:
-        return "error", str(e)
-
 @router.post("/process_bpmn", response_model=BPMNResponse)
 async def process_bpmn(request: BPMNRequest):
     # Validate if request is BPMN-related
@@ -274,35 +262,43 @@ async def process_bpmn(request: BPMNRequest):
                 user_promt=request.user_prompt,
                 buisness=request.business_requirements
             )
+            
+            # Автоматически генерируем рекомендации для новой диаграммы
+            recommendations = recs_generation(
+                piperflow=piperflow_text,
+                current_process=request.user_prompt,
+                buisness=request.business_requirements
+            )
         else:
             if not request.piperflow_text:
                 raise HTTPException(
                     status_code=400,
                     detail="Для модификации существующей диаграммы требуется piperflow_text"
                 )
+            
+            # Если рекомендации не предоставлены, генерируем их автоматически
+            if not request.recommendations:
+                recommendations = recs_generation(
+                    piperflow=request.piperflow_text,
+                    current_process=request.user_prompt,
+                    buisness=request.business_requirements
+                )
+            else:
+                recommendations = request.recommendations
+                
             piperflow_text = promt_template_creator_and_answer(
                 user_promt=request.user_prompt,
                 piperflow_text=request.piperflow_text,
-                recomendations=request.recommendations,
+                recomendations=recommendations,
                 buisness=request.business_requirements
             )
 
-        # Create diagram
-        status, result = create_diagram(piperflow_text)
-        
-        if status == "success":
-            return BPMNResponse(
-                status="success",
-                message="Диаграмма успешно создана",
-                piperflow_text=piperflow_text,
-                diagram_path=result
-            )
-        else:
-            return BPMNResponse(
-                status="error",
-                message="Ошибка при создании диаграммы",
-                error=result
-            )
+        return BPMNResponse(
+            status="success",
+            message="Диаграмма успешно создана",
+            piperflow_text=piperflow_text,
+            recommendations=recommendations
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

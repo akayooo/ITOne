@@ -78,7 +78,7 @@ export interface ChatHistoryEntry {
   chat_id: number
   message: string
   response: string
-  image?: string
+  recommendations?: string
   piperflow_text?: string
   created_at: string
   updated_at: string
@@ -89,7 +89,7 @@ export interface ChatEntry {
   chat_id: number
   message: string
   response: string
-  image?: string
+  recommendations?: string
   piperflow_text?: string
 }
 
@@ -158,16 +158,30 @@ export const chatApi = {
   // Generate BPMN diagram from text description
   generateBpmnDiagram: async (description: string, requestId?: string): Promise<{
     success: boolean;
-    image?: string;
     text?: string;
     error?: string;
+    recommendations?: string;
     is_bpmn_request?: boolean;
   }> => {
-    const response = await api.post('/api/bpmn/generate', { 
-      description,
-      request_id: requestId || `req_${Date.now()}`
-    })
-    return response.data
+    try {
+      const response = await api.post('/api/bpmn/process_bpmn', { 
+        user_prompt: description,
+        business_requirements: "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
+      });
+      
+      return {
+        success: response.data.status === "success",
+        text: response.data.piperflow_text,
+        recommendations: response.data.recommendations,
+        is_bpmn_request: true
+      };
+    } catch (error: any) {
+      console.error("Error generating BPMN diagram:", error);
+      return {
+        success: false, 
+        error: error.response?.data?.detail || "Ошибка при создании диаграммы"
+      };
+    }
   },
   
   generateRecommendations: async (piperflow: string, currentProcess: string, businessRequirements?: string): Promise<string> => {

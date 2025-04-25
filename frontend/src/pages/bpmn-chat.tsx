@@ -21,9 +21,9 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
-  image?: string
   bpmnXml?: string
   piperflowText?: string
+  recommendations?: string
 }
 
 export function BpmnChat() {
@@ -86,9 +86,9 @@ export function BpmnChat() {
           role: 'assistant' as const,
           content: entry.response,
           timestamp: new Date(entry.created_at),
-          image: entry.image,
+          bpmnXml: entry.piperflow_text ? convertPiperflowToBpmn(entry.piperflow_text) : undefined,
           piperflowText: entry.piperflow_text,
-          bpmnXml: entry.piperflow_text ? convertPiperflowToBpmn(entry.piperflow_text) : undefined
+          recommendations: entry.recommendations
         }
       ]).flat()
       
@@ -161,7 +161,6 @@ export function BpmnChat() {
         );
       
       let response = '';
-      let imageData = '';
       let bpmnXml = '';
       let piperflowText = '';
       
@@ -172,28 +171,29 @@ export function BpmnChat() {
           const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
           console.log('BPMN result received:', bpmnResult);
           
-          if (bpmnResult.success && bpmnResult.image) {
+          if (bpmnResult.success && bpmnResult.text) {
             response = "Вот созданная BPMN диаграмма на основе вашего описания:";
-            imageData = bpmnResult.image;
             
             // Save the PiperFlow text for the BPMN editor
-            if (bpmnResult.text) {
-              piperflowText = bpmnResult.text;
-              console.log('PiperFlow text received from API:', piperflowText);
-              
-              try {
-                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-                console.log('BPMN XML converted successfully, length:', bpmnXml.length);
-              } catch (convError) {
-                console.error('Error converting PiperFlow to BPMN XML:', convError);
-                toast({
-                  title: "Ошибка преобразования",
-                  description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
-                  variant: "destructive"
-                });
-              }
-            } else {
-              console.warn('No PiperFlow text in the API response');
+            piperflowText = bpmnResult.text;
+            console.log('PiperFlow text received from API:', piperflowText);
+            
+            // Сохраняем рекомендации, если они есть
+            if (bpmnResult.recommendations) {
+              console.log('Recommendations received:', bpmnResult.recommendations);
+              response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
+            }
+            
+            try {
+              bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+              console.log('BPMN XML converted successfully, length:', bpmnXml.length);
+            } catch (convError) {
+              console.error('Error converting PiperFlow to BPMN XML:', convError);
+              toast({
+                title: "Ошибка преобразования",
+                description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
+                variant: "destructive"
+              });
             }
           } else {
             response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
@@ -209,14 +209,21 @@ export function BpmnChat() {
         try {
           const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
           
-          if (bpmnResult.success && bpmnResult.image) {
+          if (bpmnResult.success && bpmnResult.text) {
             response = "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
-            imageData = bpmnResult.image;
             
             // Save the PiperFlow text for the BPMN editor
-            if (bpmnResult.text) {
-              piperflowText = bpmnResult.text;
+            piperflowText = bpmnResult.text;
+            
+            // Сохраняем рекомендации, если они есть
+            if (bpmnResult.recommendations) {
+              response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
+            }
+            
+            try {
               bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+            } catch (error) {
+              console.error('Error converting PiperFlow to BPMN XML:', error);
             }
           } else {
             // Стандартный ответ для обычных сообщений
@@ -227,21 +234,32 @@ export function BpmnChat() {
         }
       }
       
+      // Store last result for recommendations
+      let recommendations: string | undefined;
+      if (isBpmnRequest) {
+        try {
+          const lastResult = await chatApi.generateBpmnDiagram(input.trim());
+          recommendations = lastResult.recommendations;
+        } catch (error) {
+          console.error("Error getting recommendations:", error);
+        }
+      }
+      
       // Add assistant message to UI
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: response,
         timestamp: new Date(),
-        image: imageData || undefined,
         bpmnXml: bpmnXml || undefined,
-        piperflowText: piperflowText || undefined
+        piperflowText: piperflowText || undefined,
+        recommendations: recommendations
       }
       
       console.log('Creating assistant message with:', {
         hasBpmnXml: !!bpmnXml,
         hasPiperflowText: !!piperflowText,
-        hasImage: !!imageData
+        hasRecommendations: !!recommendations
       });
 
       setMessages(prev => [...prev, assistantMessage])
@@ -252,8 +270,8 @@ export function BpmnChat() {
         chat_id: chatId,
         message: input.trim(),
         response: response,
-        image: imageData || undefined,
-        piperflow_text: piperflowText || undefined
+        piperflow_text: piperflowText || undefined,
+        recommendations: recommendations
       })
       
       // Если сообщений не было (первое сообщение в чате), обновляем название чата
@@ -529,7 +547,8 @@ export function BpmnChat() {
               <BpmnEditor 
                 initialDiagram={message.bpmnXml} 
                 readOnly={true}
-                fallbackImage={message.image}
+                piperflowText={message.piperflowText}
+                initialRecommendations={message.recommendations}
               />
             </div>
             
@@ -541,20 +560,6 @@ export function BpmnChat() {
                     {message.piperflowText}
                   </pre>
                 </details>
-                
-                {message.image && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      // Display image in new tab
-                      window.open(`data:image/png;base64,${message.image}`, '_blank');
-                    }}
-                    title="Показать статичное изображение в новом окне"
-                  >
-                    Показать изображение
-                  </Button>
-                )}
               </div>
               
               <Button 
@@ -572,8 +577,8 @@ export function BpmnChat() {
                   } else {
                     console.log('No PiperFlow text available to send to editor');
                   }
-                  if (message.image) {
-                    params.set('image', message.image);
+                  if (message.recommendations) {
+                    params.set('recommendations', btoa(message.recommendations));
                   }
                   const editorUrl = `/diagram-editor?${params.toString()}`;
                   console.log('Opening editor URL:', editorUrl);
@@ -581,31 +586,6 @@ export function BpmnChat() {
                 }}
               >
                 Редактировать диаграмму
-              </Button>
-            </div>
-          </div>
-        ) : message.image ? (
-          // Отображаем изображение, если нет XML, но есть картинка
-          <div className="mt-2 rounded bg-white p-2">
-            <img 
-              src={`data:image/png;base64,${message.image}`} 
-              alt="BPMN diagram"
-              className="max-w-full"
-              style={{ maxHeight: '600px', objectFit: 'contain' }}
-            />
-            <div className="mt-2 text-right">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (message.image) {
-                    params.set('image', message.image);
-                  }
-                  window.open(`/diagram-editor?${params.toString()}`, '_blank');
-                }}
-              >
-                Открыть в редакторе
               </Button>
             </div>
           </div>

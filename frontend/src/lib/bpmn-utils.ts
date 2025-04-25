@@ -6,6 +6,7 @@ export interface BPMNResponse {
   piperflow_text?: string;
   diagram_path?: string;
   error?: string;
+  recommendations?: string;
 }
 
 export interface BPMNRequest {
