@@ -797,50 +797,49 @@ export function BpmnEditor({
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
     
-    // Allow the DOM to update, then resize the modeler
+    // Allow the DOM to update, then handle the canvas resize
     setTimeout(() => {
-      // Функция handleResize больше не используется, используем updateSize
       if (modelerRef.current) {
         try {
+          updateSize(); // Use our existing updateSize function for consistency
+          
+          // Additional resize handling for fullscreen mode
           const canvas = modelerRef.current.get('canvas') as any;
           if (canvas) {
-            canvas.resized();
+            // Re-adjust the canvas view after entering/exiting fullscreen
+            canvas.zoom('fit-viewport', 'auto');
             
-            // Ждем обновления размеров в полноэкранном режиме
-            setTimeout(() => {
-              // Сбрасываем текущие настройки viewbox для предотвращения странного поведения
-              canvas.viewbox({
-                x: 0,
-                y: 0,
-                width: 2000,
-                height: 1000
-              });
-              
-              // Затем подгоняем под размер окна
-              setTimeout(() => {
-                canvas.zoom('fit-viewport', 'auto');
-                
-                // Уменьшаем масштаб для лучшего вида и предотвращения обрезки
-                const currentZoom = canvas.zoom();
-                canvas.zoom(currentZoom * 0.7);
-                
-                // Добавляем отступы
-                const viewbox = canvas.viewbox();
-                canvas.viewbox({
-                  x: viewbox.x - 40,
-                  y: viewbox.y - 40,
-                  width: viewbox.width + 80,
-                  height: viewbox.height + 80
-                });
-              }, 200);
-            }, 300);
+            // Slightly reduce zoom level for better visibility
+            const currentZoom = canvas.zoom();
+            canvas.zoom(currentZoom * 0.85);
           }
         } catch (err) {
-          console.warn('Error during resize after fullscreen toggle:', err);
+          console.error('Error during fullscreen toggle:', err);
         }
       }
-    }, 100);
+    }, 200);
   };
+
+  // Add effect to handle ESC key to exit fullscreen mode
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        
+        // Resize handling after exiting fullscreen
+        setTimeout(() => {
+          updateSize();
+        }, 100);
+      }
+    };
+    
+    window.addEventListener('keydown', handleEsc);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [isFullscreen]);
 
   const exportAsBpmn = async () => {
     if (!modelerRef.current) return;
@@ -1011,7 +1010,14 @@ export function BpmnEditor({
 
   // Render diagram container with loading state
   return (
-    <div className={`relative h-full flex flex-col ${isFullscreen ? 'fixed inset-0 z-20 bg-background' : ''}`}>
+    <div 
+      className={`relative h-full flex flex-col ${isFullscreen ? 'bpmn-editor-fullscreen' : ''}`}
+      style={{
+        maxHeight: isFullscreen ? '100vh' : '100%',
+        height: isFullscreen ? '100vh' : '100%',
+        width: isFullscreen ? '100vw' : '100%',
+      }}
+    >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
           <div className="flex flex-col items-center bg-card p-8 rounded-lg shadow-lg border">

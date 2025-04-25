@@ -5,6 +5,38 @@
   display: none !important;
 }
 
+/* Стили для полноэкранного режима */
+.bpmn-editor-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1000 !important;
+  background: white !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.bpmn-editor-fullscreen .bpmn-container {
+  height: calc(100vh - 60px) !important;
+  width: 100vw !important;
+}
+
+.bpmn-editor-fullscreen .djs-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.bpmn-editor-fullscreen .bpmn-toolbar {
+  position: fixed !important;
+  top: 10px !important;
+  left: 10px !important;
+  right: 10px !important;
+  z-index: 1010 !important;
+}
+
 /* Дополнительные стили для редактора */
 .djs-palette {
   border-radius: 8px;
