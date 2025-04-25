@@ -40,8 +40,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
   const [recommendationItems, setRecommendationItems] = useState<{id: number, text: string, selected: boolean}[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Всегда отображаем панель для отладки
-  const [isOpen, setIsOpen] = useState(true);
+  // Меняем стандартное состояние на скрытое
+  const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
 
   // Добавляем отладочные логи
@@ -164,7 +164,14 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
                   variant="secondary" 
                   className="rounded-full shadow-md aspect-square p-0" 
                   style={{ width: "48px", height: "48px" }}
-                  onClick={fetchRecommendations}
+                  onClick={() => {
+                    // Открываем панель при клике
+                    setIsOpen(true);
+                    // И загружаем рекомендации, если их еще нет
+                    if (!recommendations) {
+                      fetchRecommendations();
+                    }
+                  }}
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -181,7 +188,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
           </TooltipProvider>
         </div>
       ) : (
-        <div className="bg-background/95 backdrop-blur-sm border-t shadow-lg p-4 transition-all">
+        <div className="recommendations-panel-slide-up bg-background/95 backdrop-blur-sm border-t shadow-lg p-4 transition-all">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Lightbulb className="h-5 w-5 text-yellow-500" />

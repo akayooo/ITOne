@@ -22,6 +22,24 @@
   overflow: hidden;
 }
 
+/* Анимация выезжания панели рекомендаций */
+.recommendations-panel-slide-up {
+  animation: slide-up 0.3s ease forwards;
+  transform-origin: bottom;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slide-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* Стили для кнопок в редакторе */
 .recommendations-btn {
   border-radius: 8px !important;
