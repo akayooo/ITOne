@@ -51,16 +51,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
     // Process initial recommendations if available
     if (initialRecommendations) {
       console.log("Processing initial recommendations");
-      const items = initialRecommendations.split(/\d+\./)
-        .filter(item => item.trim().length > 0)
-        .map((item, index) => ({
-          id: index,
-          text: item.trim(),
-          selected: true
-        }));
-      
-      console.log("Parsed recommendation items:", items);
-      setRecommendationItems(items);
+      processRecommendations(initialRecommendations);
     } else {
       console.log("No initial recommendations, fetching from API");
       // Автоматически получаем рекомендации, если их нет
@@ -68,8 +59,33 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
     }
   }, [initialRecommendations, piperflowText]);
 
+  // Выделяем обработку рекомендаций в отдельную функцию
+  const processRecommendations = (recsText: string) => {
+    console.log("Processing recommendations text:", recsText);
+    
+    // Split recommendations into separate items
+    const items = recsText.split(/\d+\./)
+      .filter(item => item.trim().length > 0)
+      .map((item, index) => ({
+        id: index,
+        text: item.trim(),
+        selected: true
+      }));
+    
+    console.log("Parsed recommendation items:", items);
+    setRecommendationItems(items);
+    setRecommendations(recsText);
+  };
+
   const fetchRecommendations = async () => {
-    console.log("Fetching recommendations");
+    // Если рекомендации уже есть, используем их
+    if (recommendations) {
+      console.log("Already have recommendations, using existing ones");
+      setIsOpen(true);
+      return;
+    }
+
+    console.log("Fetching recommendations from API");
     setIsLoading(true);
     setError(null);
     
@@ -77,19 +93,9 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       console.log("Calling API with:", { piperflowText, currentProcess });
       const recsText = await chatApi.generateRecommendations(piperflowText, currentProcess);
       console.log("Received recommendations:", recsText);
-      setRecommendations(recsText);
       
-      // Split recommendations into separate items
-      const items = recsText.split(/\d+\./)
-        .filter(item => item.trim().length > 0)
-        .map((item, index) => ({
-          id: index,
-          text: item.trim(),
-          selected: true
-        }));
-      
-      console.log("Parsed recommendation items:", items);
-      setRecommendationItems(items);
+      // Обрабатываем полученные рекомендации
+      processRecommendations(recsText);
       setIsOpen(true);
     } catch (err: any) {
       console.error('Error fetching recommendations:', err);

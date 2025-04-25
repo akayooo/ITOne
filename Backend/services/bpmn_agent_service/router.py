@@ -204,26 +204,39 @@ def recs_generation(piperflow: str, current_process: str, buisness: str) -> str:
     Генерирует рекомендации по улучшению диаграмм с точки зрения бизнеса
     """
     promt = """
-    **Роль:** 
-    Ты — продвинутый ИИ-ассистент, специализирующийся на анализе и моделировании бизнес-процессов в формате BPMN.
-
-    **Задача:** Проанализируй следующее текстовое описание и отредактируй ее по правкам, используя синтаксис PiperFlow, который подходит для библиотеки Python `processpiper`. Твоя цель — написать рекомендации по улучшению диаграммы с точки зрения бизнеса, не пиши код Piperflow
-
-    **Входное описание процесса:**
+    Ты — продвинутый ИИ-ассистент для анализа бизнес-процессов в формате BPMN.
+    
+    Проанализируй следующее описание и напиши рекомендации по улучшению диаграммы.
+    
     Текущий PiperFlow синтаксис: {piperflow}
-
-    **Описание бизнес-процесса**
-    Текущий бизнесс процесс: {current_process}
-
-    **Бизнес требования**
+    
+    Текущий бизнес процесс: {current_process}
+    
     Требования со стороны бизнеса: {buisness}
-
-    Улучши эту схему, основываясь на бизнес тробованиях.
+    
+    Дай максимум 5 (пять) четких рекомендаций по улучшению этой схемы.
+    Каждая рекомендация должна быть пронумерована (1., 2., и т.д.).
+    Не используй маркдаун-форматирование (звездочки, решетки).
+    Пиши кратко и по существу, без вводных фраз и заключений.
     """
     promt = promt.format(piperflow=piperflow, current_process=current_process, buisness=buisness)
     recs = call_deepseek_api(promt)
-
-    return recs
+    
+    # Дополнительная обработка для удаления маркдаун-форматирования
+    recs = recs.replace('**', '').replace('##', '').replace('*', '').replace('#', '')
+    
+    # Ограничение до 5 рекомендаций
+    recommendations = []
+    for line in recs.split('\n'):
+        line = line.strip()
+        if line and (line[0].isdigit() and line[1:3] in ['. ', '- ', ': ', ') ']):
+            recommendations.append(line)
+    
+    # Оставляем только первые 5 рекомендаций
+    if len(recommendations) > 5:
+        recommendations = recommendations[:5]
+        
+    return '\n'.join(recommendations) if recommendations else recs
 
 def promt_template_creator_and_answer(user_promt: str, buisness: str, recomendations: str = None, piperflow_text: str = None) -> str:
     """

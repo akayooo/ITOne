@@ -163,6 +163,7 @@ export function BpmnChat() {
       let response = '';
       let bpmnXml = '';
       let piperflowText = '';
+      let recommendations: string | undefined;
       
       // Если определили запрос на BPMN диаграмму, генерируем ее
       if (isBpmnRequest) {
@@ -195,6 +196,11 @@ export function BpmnChat() {
                 variant: "destructive"
               });
             }
+            
+            // Используем рекомендации из полученного результата
+            if (bpmnResult.recommendations) {
+              recommendations = bpmnResult.recommendations;
+            }
           } else {
             response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
             console.error('BPMN generation failed:', bpmnResult.error);
@@ -218,6 +224,7 @@ export function BpmnChat() {
             // Сохраняем рекомендации, если они есть
             if (bpmnResult.recommendations) {
               response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
+              recommendations = bpmnResult.recommendations;
             }
             
             try {
@@ -231,17 +238,6 @@ export function BpmnChat() {
           }
         } catch (error) {
           response = "Непридвиденная ошибка.";
-        }
-      }
-      
-      // Store last result for recommendations
-      let recommendations: string | undefined;
-      if (isBpmnRequest) {
-        try {
-          const lastResult = await chatApi.generateBpmnDiagram(input.trim());
-          recommendations = lastResult.recommendations;
-        } catch (error) {
-          console.error("Error getting recommendations:", error);
         }
       }
       
