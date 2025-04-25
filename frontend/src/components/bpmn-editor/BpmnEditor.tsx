@@ -908,9 +908,15 @@ export function BpmnEditor({
           });
       }
       
+      // If onSave callback provided (for parent components), call it with the new XML
+      if (onSave) {
+        console.log("Calling onSave callback with updated XML");
+        onSave(updatedXml);
+      }
+      
       toast({
         title: "Диаграмма обновлена",
-        description: "Диаграмма успешно обновлена с учетом рекомендаций"
+        description: "Диаграмма успешно обновлена с учетом изменений"
       });
     } catch (error) {
       console.error('Error updating diagram with recommendations:', error);

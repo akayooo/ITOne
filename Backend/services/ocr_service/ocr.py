@@ -247,3 +247,63 @@ class OCRService:
         image = Image.open(io.BytesIO(image_bytes))
         
         return self.process_image(image)
+
+
+# Example usage
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Usage: python ocr.py <path_to_pdf_file>")
+        sys.exit(1)
+    
+    pdf_path = sys.argv[1]
+    
+    if not os.path.exists(pdf_path):
+        print(f"Error: File '{pdf_path}' not found")
+        sys.exit(1)
+    
+    if not pdf_path.lower().endswith('.pdf'):
+        print(f"Error: File '{pdf_path}' is not a PDF file")
+        sys.exit(1)
+    
+    print(f"Processing PDF file: {pdf_path}")
+    
+    # Initialize OCR service
+    ocr_service = OCRService(use_transformers=True)
+    
+    # Extract text from PDF
+    result = ocr_service.extract_text(file_path=pdf_path)
+    
+    # Print extracted text
+    print("\n" + "="*50 + " EXTRACTED TEXT " + "="*50 + "\n")
+    print(result["text"])
+    print("\n" + "="*120 + "\n")
+    
+    # Print page statistics
+    print(f"Total pages processed: {result['pages']}")
+    
+    # Print per-page text if needed
+    if result["pages"] > 1:
+        print("\nWould you like to see text from specific pages? (y/n)")
+        choice = input().lower()
+        
+        if choice == 'y':
+            while True:
+                print(f"Enter page number (1-{result['pages']}) or 'q' to quit:")
+                page_input = input()
+                
+                if page_input.lower() == 'q':
+                    break
+                
+                try:
+                    page_num = int(page_input)
+                    if 1 <= page_num <= result['pages']:
+                        page_text = result['page_results'][page_num-1]['text']
+                        print("\n" + "-"*50 + f" PAGE {page_num} " + "-"*50 + "\n")
+                        print(page_text)
+                        print("\n" + "-"*120 + "\n")
+                    else:
+                        print(f"Page number must be between 1 and {result['pages']}")
+                except ValueError:
+                    print("Please enter a valid page number")

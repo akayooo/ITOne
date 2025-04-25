@@ -168,7 +168,7 @@ export const chatApi = {
   },
   
   // Generate BPMN diagram from text description
-  generateBpmnDiagram: async (description: string, requestId?: string): Promise<{
+  generateBpmnDiagram: async (description: string, requestId?: string, existingPiperflow?: string): Promise<{
     success: boolean;
     text?: string;
     error?: string;
@@ -176,10 +176,18 @@ export const chatApi = {
     is_bpmn_request?: boolean;
   }> => {
     try {
-      const response = await api.post('/api/bpmn/process_bpmn', { 
+      const payload: any = { 
         user_prompt: description,
         business_requirements: "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
-      });
+      };
+
+      // If we have existing piperflow, add it to the request
+      if (existingPiperflow) {
+        payload.piperflow_text = existingPiperflow;
+        console.log("Sending request to modify existing diagram");
+      }
+      
+      const response = await api.post('/api/bpmn/process_bpmn', payload);
       
       return {
         success: response.data.status === "success",
@@ -193,6 +201,71 @@ export const chatApi = {
         success: false, 
         error: error.response?.data?.detail || "Ошибка при создании диаграммы"
       };
+    }
+  },
+  
+  // Determine BPMN request type (new diagram, add block, or edit)
+  determineBpmnRequestType: async (message: string): Promise<'TYPE_1' | 'TYPE_2' | 'TYPE_3' | 'NOT_BPMN'> => {
+    try {
+      const addBlockPatterns = [
+        'добавь новый блок', 
+        'добавить новый блок',
+        'добавь блок', 
+        'добавить блок',
+        'добавить еще один шаг',
+        'добавь еще один шаг',
+        'дополнить диаграмму',
+        'добавь этап',
+        'добавить этап',
+        'расширить схему',
+        'нужно добавить',
+        'включи в диаграмму'
+      ];
+      
+      const editPatterns = [
+        'редактировать диаграмму',
+        'изменить диаграмму',
+        'исправить диаграмму',
+        'обнови диаграмму',
+        'улучшить диаграмму',
+        'переделать диаграмму'
+      ];
+      
+      const bpmnPatterns = [
+        'диаграмм', 
+        'bpmn',
+        'схема процесса',
+        'схему процесса',
+        'бизнес-процесс',
+        'process diagram',
+        'нарисуй',
+        'построй',
+        'показать процесс',
+        'визуализируй'
+      ];
+      
+      const lowerMessage = message.toLowerCase();
+      
+      // Check if it's an add block request
+      if (addBlockPatterns.some(pattern => lowerMessage.includes(pattern))) {
+        return 'TYPE_2';
+      }
+      
+      // Check if it's an edit request
+      if (editPatterns.some(pattern => lowerMessage.includes(pattern))) {
+        return 'TYPE_3';
+      }
+      
+      // Check if it's a new diagram request
+      if (bpmnPatterns.some(pattern => lowerMessage.includes(pattern))) {
+        return 'TYPE_1';
+      }
+      
+      // Not a BPMN request
+      return 'NOT_BPMN';
+    } catch (error) {
+      console.error("Error determining BPMN request type:", error);
+      return 'NOT_BPMN';
     }
   },
   

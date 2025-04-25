@@ -136,43 +136,107 @@ export function BpmnChat() {
     setIsLoading(true)
     
     try {
-      // Расширенное определение запросов на генерацию BPMN диаграмм
-      const userInput = input.toLowerCase();
-      const isBpmnRequest = 
-        // Явные запросы
-        userInput.includes('диаграмм') || 
-        userInput.includes('bpmn') ||
-        userInput.includes('схема процесса') ||
-        userInput.includes('схему процесса') ||
-        userInput.includes('бизнес-процесс') ||
-        userInput.includes('process diagram') ||
-        userInput.includes('нарисуй') ||
-        userInput.includes('построй') ||
-        userInput.includes('показать процесс') ||
-        userInput.includes('визуализируй') ||
-        // Неявные запросы на процессы
-        (userInput.includes('процесс') && 
-          (
-            userInput.includes('заказ') || 
-            userInput.includes('покупк') || 
-            userInput.includes('покупки') || 
-            userInput.includes('оформлени') || 
-            userInput.includes('регистрац') || 
-            userInput.includes('авторизаци') || 
-            userInput.includes('доставки') || 
-            userInput.includes('оплаты') ||
-            userInput.includes('учет') ||
-            userInput.includes('продаж')
-          )
-        );
+      // Определяем тип запроса с помощью нашей новой функции
+      const requestType = await chatApi.determineBpmnRequestType(input);
+      console.log('Determined request type:', requestType);
       
       let response = '';
       let bpmnXml = '';
       let piperflowText = '';
       let recommendations: string | undefined;
       
-      // Если определили запрос на BPMN диаграмму, генерируем ее
-      if (isBpmnRequest) {
+      // Если запрос на добавление блока (TYPE_2), найдем предыдущую диаграмму
+      if (requestType === 'TYPE_2') {
+        console.log('Detected "add block" request (TYPE_2)');
+        // Найти последнее сообщение с диаграммой в истории чата
+        const lastBpmnMessage = [...messages].reverse().find(msg => 
+          msg.piperflowText && msg.piperflowText.length > 0
+        );
+        
+        if (lastBpmnMessage?.piperflowText) {
+          console.log('Found previous diagram, sending modification request');
+          
+          try {
+            // Отправляем запрос с предыдущей диаграммой и текущим запросом
+            const bpmnResult = await chatApi.generateBpmnDiagram(input.trim(), undefined, lastBpmnMessage.piperflowText);
+            
+            if (bpmnResult.success && bpmnResult.text) {
+              response = "Вот обновленная BPMN диаграмма с добавленными блоками:";
+              
+              // Save the PiperFlow text for the BPMN editor
+              piperflowText = bpmnResult.text;
+              
+              // Сохраняем рекомендации, если они есть
+              if (bpmnResult.recommendations) {
+                response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
+                recommendations = bpmnResult.recommendations;
+              }
+              
+              try {
+                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+              } catch (error) {
+                console.error('Error converting PiperFlow to BPMN XML:', error);
+              }
+            } else {
+              response = `Не удалось обновить BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+              console.error('BPMN update failed:', bpmnResult.error);
+            }
+          } catch (error) {
+            console.error('Error calling BPMN modification API:', error);
+            response = "Ошибка при обновлении BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
+          }
+        } else {
+          response = "Не найдена предыдущая BPMN диаграмма для редактирования. Сначала создайте диаграмму.";
+        }
+      } 
+      // Если запрос на редактирование (TYPE_3), найдем предыдущую диаграмму
+      else if (requestType === 'TYPE_3') {
+        console.log('Detected "edit diagram" request (TYPE_3)');
+        // Найти последнее сообщение с диаграммой в истории чата
+        const lastBpmnMessage = [...messages].reverse().find(msg => 
+          msg.piperflowText && msg.piperflowText.length > 0
+        );
+        
+        if (lastBpmnMessage?.piperflowText) {
+          console.log('Found previous diagram, sending edit request');
+          
+          try {
+            // Отправляем запрос с предыдущей диаграммой и текущим запросом
+            const bpmnResult = await chatApi.generateBpmnDiagram(input.trim(), undefined, lastBpmnMessage.piperflowText);
+            
+            if (bpmnResult.success && bpmnResult.text) {
+              response = "Вот отредактированная BPMN диаграмма:";
+              
+              // Save the PiperFlow text for the BPMN editor
+              piperflowText = bpmnResult.text;
+              
+              // Сохраняем рекомендации, если они есть
+              if (bpmnResult.recommendations) {
+                response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
+                recommendations = bpmnResult.recommendations;
+              }
+              
+              try {
+                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
+              } catch (error) {
+                console.error('Error converting PiperFlow to BPMN XML:', error);
+              }
+            } else {
+              response = `Не удалось отредактировать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+              console.error('BPMN edit failed:', bpmnResult.error);
+            }
+          } catch (error) {
+            console.error('Error calling BPMN edit API:', error);
+            response = "Ошибка при редактировании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
+          }
+        } else {
+          response = "Не найдена предыдущая BPMN диаграмма для редактирования. Сначала создайте диаграмму.";
+        }
+      }
+      // Если запрос на создание новой диаграммы (TYPE_1)
+      else if (requestType === 'TYPE_1') {
+        console.log('Detected "create new diagram" request (TYPE_1)');
+        
         try {
           console.log('Sending BPMN generation request for:', input.trim());
           const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
@@ -215,39 +279,13 @@ export function BpmnChat() {
           console.error('Error calling BPMN generation API:', error);
           response = "Ошибка при создании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
         }
-      } else {
-        // Отправляем запрос на генерацию BPMN диаграммы, даже если не распознали явно
-        // Это позволит модели самой решить, подходит ли запрос для создания диаграммы
-        try {
-          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
-          
-          if (bpmnResult.success && bpmnResult.text) {
-            response = "Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму. Вот результат:";
-            
-            // Save the PiperFlow text for the BPMN editor
-            piperflowText = bpmnResult.text;
-            
-            // Сохраняем рекомендации, если они есть
-            if (bpmnResult.recommendations) {
-              response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
-              recommendations = bpmnResult.recommendations;
-            }
-            
-            try {
-              bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-            } catch (error) {
-              console.error('Error converting PiperFlow to BPMN XML:', error);
-            }
-          } else {
-            // Стандартный ответ для обычных сообщений
-            response = "Кажется ваш запрос не связан с созданием диаграммы.";
-          }
-        } catch (error) {
-          response = "Непридвиденная ошибка.";
-        }
+      }
+      // Не BPMN запрос или неизвестный тип
+      else {
+        response = "Ваш запрос не распознан как запрос на создание или редактирование BPMN диаграммы.";
       }
       
-      // Add assistant message to UI
+      // Add assistant message to chat history
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -258,40 +296,37 @@ export function BpmnChat() {
         recommendations: recommendations
       }
       
-      console.log('Creating assistant message with:', {
-        hasBpmnXml: !!bpmnXml,
-        hasPiperflowText: !!piperflowText,
-        hasRecommendations: !!recommendations
-      });
-
       setMessages(prev => [...prev, assistantMessage])
       
-      // Save the message exchange to the database
-      try {
-        const savedChatEntry = await chatApi.saveChatEntry({
-          user_id: user.id,
-          chat_id: chatId,
-          message: input.trim(),
-          response: response,
-          piperflow_text: piperflowText || undefined,
-          recommendations: recommendations
-        });
-
-        console.log('Chat entry saved successfully with ID:', savedChatEntry.id);
-        
-        // Обновляем сообщение с ID записи в базе данных
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessage.id 
-            ? { ...msg, historyId: savedChatEntry.id } 
-            : msg
-        ));
-      } catch (error) {
-        console.error('Error saving chat entry:', error);
-        toast({
-          title: "Ошибка сохранения",
-          description: "Не удалось сохранить сообщение в базе данных",
-          variant: "destructive"
-        });
+      // Save chat to database if we have a chatId
+      if (chatId && user?.id) {
+        try {
+          // Save both user message and assistant response in database
+          const savedEntry = await chatApi.saveChatEntry({
+            user_id: user.id,
+            chat_id: chatId,
+            message: input,
+            response: response,
+            recommendations: recommendations,
+            piperflow_text: piperflowText
+          })
+          
+          console.log('Chat entry saved with ID:', savedEntry.id)
+          
+          // Update the assistantMessage with the database ID for future reference
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessage.id 
+              ? { ...msg, historyId: savedEntry.id }
+              : msg
+          ))
+        } catch (error) {
+          console.error('Failed to save chat history:', error)
+          toast({
+            title: "Ошибка",
+            description: "Не удалось сохранить историю чата",
+            variant: "destructive"
+          })
+        }
       }
       
       // Если сообщений не было (первое сообщение в чате), обновляем название чата
