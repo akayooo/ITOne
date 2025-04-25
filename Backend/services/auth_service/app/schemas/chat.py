@@ -37,11 +37,19 @@ class ChatHistoryCreate(ChatHistoryBase):
     chat_id: int
 
 
+class ChatHistoryUpdate(BaseModel):
+    message: Optional[str] = None
+    response: Optional[str] = None
+    recommendations: Optional[str] = None
+    piperflow_text: Optional[str] = None
+
+
 class ChatHistoryResponse(ChatHistoryBase):
     id: int
     user_id: int
     chat_id: int
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True 

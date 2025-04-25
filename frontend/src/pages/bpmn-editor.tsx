@@ -18,6 +18,7 @@ export function BpmnEditorPage() {
   const imageData = searchParams.get("image");
   const piperflowText = searchParams.get("piperflow");
   const recommendations = searchParams.get("recommendations");
+  const chatEntryId = searchParams.get("chatEntryId");
   
   const [diagramTitle, setDiagramTitle] = useState("Новая BPMN диаграмма");
   const [bpmnXml, setBpmnXml] = useState<string | undefined>(undefined);
@@ -241,6 +242,7 @@ pool: Process
             onSave={handleSave}
             piperflowText={piperflowText ? atob(piperflowText) : undefined}
             initialRecommendations={recommendations ? atob(recommendations) : undefined}
+            chatEntryId={chatEntryId ? parseInt(chatEntryId) : undefined}
           />
         ) : imageData ? (
           <div className="h-full flex flex-col items-center justify-center p-4">

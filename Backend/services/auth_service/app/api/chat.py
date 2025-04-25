@@ -7,7 +7,10 @@ from services.auth_service.app.api.auth import get_current_active_user
 from services.auth_service.app.database import get_db
 from services.auth_service.app.models.chat import Chat, ChatHistory
 from services.auth_service.app.models.user import User as UserModel
-from services.auth_service.app.schemas.chat import ChatCreate, ChatResponse, ChatUpdate, ChatHistoryCreate, ChatHistoryResponse
+from services.auth_service.app.schemas.chat import (
+    ChatCreate, ChatResponse, ChatUpdate, 
+    ChatHistoryCreate, ChatHistoryResponse, ChatHistoryUpdate
+)
 
 router = APIRouter()
 
@@ -228,5 +231,47 @@ def get_chat_entry(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot access chat entries of other users"
         )
+    
+    return chat_entry
+
+@router.put("/chat/{chat_entry_id}", response_model=ChatHistoryResponse)
+def update_chat_entry(
+    chat_entry_id: int,
+    chat_data: ChatHistoryUpdate,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Session = Depends(get_db)
+):
+    """Update an existing chat entry"""
+    # Get the existing chat entry
+    chat_entry = db.query(ChatHistory).filter(ChatHistory.id == chat_entry_id).first()
+    
+    if not chat_entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat entry not found"
+        )
+    
+    # Ensure the chat entry belongs to the current user
+    if chat_entry.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify chat entries of other users"
+        )
+    
+    # Update only the fields that are provided and not None
+    data_dict = chat_data.model_dump(exclude_unset=True)
+    for key, value in data_dict.items():
+        if value is not None:
+            setattr(chat_entry, key, value)
+    
+    # Update the entry
+    db.commit()
+    db.refresh(chat_entry)
+    
+    # Also update the chat's updated_at timestamp
+    chat = db.query(Chat).filter(Chat.id == chat_entry.chat_id).first()
+    if chat:
+        chat.updated_at = chat_entry.updated_at
+        db.commit()
     
     return chat_entry 

@@ -198,9 +198,17 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
     
     if (selectedRecs && selectedRecs.trim().length > 0) {
       setIsLoading(true);
+      setError(null);
       
       console.log("Applying recommendations:", selectedRecs);
       console.log("PiperFlow length:", piperflowText?.length || 0);
+      
+      // Показываем глобальное уведомление о процессе
+      toast({
+        title: "Применение рекомендаций",
+        description: "Пожалуйста, подождите...",
+        duration: 3000
+      });
       
       chatApi.applyRecommendations(piperflowText, selectedRecs)
         .then(result => {
@@ -224,6 +232,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
         })
         .catch(err => {
           console.error("Error applying recommendations:", err);
+          setError(err.message || "Произошла ошибка при применении рекомендаций");
           toast({
             title: "Ошибка",
             description: err.message || "Произошла ошибка при применении рекомендаций",
@@ -278,12 +287,20 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
         </div>
       ) : (
         <div className="recommendations-panel-slide-up rounded-lg border overflow-hidden bg-background shadow-lg">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-20">
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <span className="mt-2 text-sm text-muted-foreground">Применение рекомендаций...</span>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between items-center p-3 border-b bg-muted/50">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Lightbulb className="h-5 w-5 text-yellow-500" />
               Рекомендации
             </h3>
-            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="close-btn">
+            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="close-btn" disabled={isLoading}>
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -303,10 +320,11 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
                       checked={item.selected}
                       onCheckedChange={() => toggleRecommendation(item.id)}
                       className="mt-1"
+                      disabled={isLoading}
                     />
                     <label 
                       htmlFor={`rec-${item.id}`} 
-                      className="text-sm flex-1 cursor-pointer"
+                      className={`text-sm flex-1 cursor-pointer ${isLoading ? 'opacity-50' : ''}`}
                     >
                       {item.text}
                     </label>
@@ -344,6 +362,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
                         );
                       }}
                       className="select-btn recommendations-btn"
+                      disabled={isLoading}
                     >
                       {recommendationItems.every(item => item.selected) 
                         ? <XSquare className="h-4 w-4" /> 
@@ -367,10 +386,10 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
                       variant="default" 
                       size="icon"
                       onClick={applySelectedRecommendations} 
-                      disabled={recommendationItems.filter(item => item.selected).length === 0}
+                      disabled={isLoading || recommendationItems.filter(item => item.selected).length === 0}
                       className="apply-btn recommendations-btn"
                     >
-                      <Check className="h-4 w-4" />
+                      {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -392,6 +411,7 @@ interface BpmnEditorProps {
   onSave?: (xml: string) => void;
   piperflowText?: string;
   initialRecommendations?: string;
+  chatEntryId?: number;
 }
 
 export function BpmnEditor({ 
@@ -399,7 +419,8 @@ export function BpmnEditor({
   readOnly = false, 
   onSave,
   piperflowText = "",
-  initialRecommendations
+  initialRecommendations,
+  chatEntryId
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
@@ -860,6 +881,33 @@ export function BpmnEditor({
       // Update the diagram with the new XML
       importDiagram(updatedXml);
       
+      // If we have a chat entry ID, update it in the database
+      if (chatEntryId) {
+        console.log("Saving updated diagram with ID:", chatEntryId);
+        
+        // Update the chat entry using updateChatEntry instead of saveChatEntry
+        chatApi.updateChatEntry(chatEntryId, {
+          piperflow_text: updatedPiperflow
+        })
+          .then(() => {
+            console.log("Chat entry updated successfully");
+            
+            toast({
+              title: "Диаграмма сохранена",
+              description: "Обновленная диаграмма сохранена в базе данных"
+            });
+          })
+          .catch(err => {
+            console.error("Error updating chat entry:", err);
+            
+            toast({
+              title: "Ошибка сохранения",
+              description: "Не удалось сохранить обновленную диаграмму в базе данных",
+              variant: "destructive"
+            });
+          });
+      }
+      
       toast({
         title: "Диаграмма обновлена",
         description: "Диаграмма успешно обновлена с учетом рекомендаций"
@@ -871,11 +919,37 @@ export function BpmnEditor({
       chatApi.generateBpmnDiagram("Обновить диаграмму с рекомендациями")
         .then(result => {
           if (result.success && result.text) {
-            setPiperflowText(result.text);
+            const updatedPiperflow = result.text;
+            setPiperflowText(updatedPiperflow);
             
             try {
-              const xml = convertPiperflowToBpmn(result.text);
+              const xml = convertPiperflowToBpmn(updatedPiperflow);
               importDiagram(xml);
+              
+              // If we have a chat entry ID, update it in the database
+              if (chatEntryId) {
+                // Update the chat entry using updateChatEntry 
+                chatApi.updateChatEntry(chatEntryId, {
+                  piperflow_text: updatedPiperflow
+                })
+                  .then(() => {
+                    console.log("Chat entry updated successfully");
+                    
+                    toast({
+                      title: "Диаграмма сохранена",
+                      description: "Обновленная диаграмма сохранена в базе данных"
+                    });
+                  })
+                  .catch(err => {
+                    console.error("Error updating chat entry:", err);
+                    
+                    toast({
+                      title: "Ошибка сохранения",
+                      description: "Не удалось сохранить обновленную диаграмму в базе данных",
+                      variant: "destructive"
+                    });
+                  });
+              }
               
               toast({
                 title: "Диаграмма обновлена",
@@ -916,16 +990,17 @@ export function BpmnEditor({
   return (
     <div className={`relative h-full flex flex-col ${isFullscreen ? 'fixed inset-0 z-20 bg-background' : ''}`}>
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-          <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            <span className="mt-4 text-muted-foreground">Загрузка редактора...</span>
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+          <div className="flex flex-col items-center bg-card p-8 rounded-lg shadow-lg border">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mb-4"></div>
+            <span className="text-lg font-medium">Загрузка диаграммы...</span>
+            <span className="text-sm text-muted-foreground mt-2">Пожалуйста, подождите</span>
           </div>
         </div>
       )}
       
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
           <div className="max-w-md p-6 bg-card shadow-lg rounded-lg border">
             <h3 className="text-lg font-semibold text-destructive mb-2">Ошибка загрузки редактора</h3>
             <p className="text-muted-foreground mb-4">{error}</p>

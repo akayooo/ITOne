@@ -149,9 +149,21 @@ export const chatApi = {
     return response.data
   },
   
+  // Get a specific chat entry by ID
+  getChatEntry: async (entryId: number): Promise<ChatHistoryEntry> => {
+    const response = await api.get(`/chat/chat/${entryId}`)
+    return response.data
+  },
+  
   // Save a chat entry
   saveChatEntry: async (entry: ChatEntry): Promise<ChatHistoryEntry> => {
     const response = await api.post('/chat/chat', entry)
+    return response.data
+  },
+  
+  // Update an existing chat entry
+  updateChatEntry: async (entryId: number, data: Partial<ChatEntry>): Promise<ChatHistoryEntry> => {
+    const response = await api.put(`/chat/chat/${entryId}`, data)
     return response.data
   },
   
@@ -200,11 +212,26 @@ export const chatApi = {
     error?: string;
   }> => {
     try {
+      console.log("Calling apply_recommendations API endpoint...");
+      
       const response = await api.post('/api/bpmn/apply_recommendations', {
         piperflow_text: piperflow,
         recommendations: recommendations,
         business_requirements: businessRequirements || "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
       });
+      
+      console.log("apply_recommendations API response received:", {
+        statusCode: response.status,
+        dataLength: response.data ? JSON.stringify(response.data).length : 0
+      });
+      
+      if (!response.data || !response.data.piperflow_text) {
+        console.warn("API response missing expected data:", response.data);
+        return {
+          success: false,
+          error: "Получен неполный ответ от сервера"
+        };
+      }
       
       return {
         success: true,
@@ -213,9 +240,19 @@ export const chatApi = {
       };
     } catch (error: any) {
       console.error("Error applying recommendations:", error);
+      let errorMessage = "Ошибка при применении рекомендаций";
+      
+      if (error.response) {
+        console.error("Error response:", {
+          status: error.response.status,
+          data: error.response.data
+        });
+        errorMessage = error.response.data?.detail || errorMessage;
+      }
+      
       return {
         success: false,
-        error: error.response?.data?.detail || "Ошибка при применении рекомендаций"
+        error: errorMessage
       };
     }
   }

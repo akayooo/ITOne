@@ -545,6 +545,7 @@ export function BpmnChat() {
                 readOnly={true}
                 piperflowText={message.piperflowText}
                 initialRecommendations={message.recommendations}
+                chatEntryId={parseInt(message.id.replace('assistant-', ''))}
               />
             </div>
             
