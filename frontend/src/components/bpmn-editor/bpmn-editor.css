@@ -1,0 +1,23 @@
+/* CSS для настройки редактора BPMN */
+
+/* Скрываем логотип BPMN.io */
+.bjs-powered-by {
+  display: none !important;
+}
+
+/* Дополнительные стили для редактора */
+.djs-palette {
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.djs-context-pad {
+  opacity: 0.95;
+}
+
+/* Улучшаем стиль контейнера */
+.bpmn-container {
+  border-radius: 8px;
+  overflow: hidden;
+} 

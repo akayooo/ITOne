@@ -10,6 +10,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Добавляем CSS для скрытия логотипа BPMN.io
+import './bpmn-editor.css';
+
 // Empty diagram template
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd" id="sample-diagram" targetNamespace="http://bpmn.io/schema/bpmn">
@@ -630,7 +633,7 @@ export function BpmnEditor({
         )}
       </div>
       
-      <div ref={containerRef} className="h-full" />
+      <div ref={containerRef} className="h-full bpmn-container" />
       
       <RecommendationsPanel 
         piperflowText={piperflowText}
