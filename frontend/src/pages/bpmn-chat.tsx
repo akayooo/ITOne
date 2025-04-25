@@ -18,9 +18,14 @@ declare global {
 
 interface Message {
   id: string
+  historyId?: number
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  isError?: boolean
+  isLoading?: boolean
+  isUploading?: boolean
+  isResending?: boolean
   bpmnXml?: string
   piperflowText?: string
   recommendations?: string
@@ -83,6 +88,7 @@ export function BpmnChat() {
         },
         {
           id: `assistant-${entry.id}`,
+          historyId: entry.id,
           role: 'assistant' as const,
           content: entry.response,
           timestamp: new Date(entry.created_at),
@@ -261,14 +267,32 @@ export function BpmnChat() {
       setMessages(prev => [...prev, assistantMessage])
       
       // Save the message exchange to the database
-      await chatApi.saveChatEntry({
-        user_id: user.id,
-        chat_id: chatId,
-        message: input.trim(),
-        response: response,
-        piperflow_text: piperflowText || undefined,
-        recommendations: recommendations
-      })
+      try {
+        const savedChatEntry = await chatApi.saveChatEntry({
+          user_id: user.id,
+          chat_id: chatId,
+          message: input.trim(),
+          response: response,
+          piperflow_text: piperflowText || undefined,
+          recommendations: recommendations
+        });
+
+        console.log('Chat entry saved successfully with ID:', savedChatEntry.id);
+        
+        // Обновляем сообщение с ID записи в базе данных
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantMessage.id 
+            ? { ...msg, historyId: savedChatEntry.id } 
+            : msg
+        ));
+      } catch (error) {
+        console.error('Error saving chat entry:', error);
+        toast({
+          title: "Ошибка сохранения",
+          description: "Не удалось сохранить сообщение в базе данных",
+          variant: "destructive"
+        });
+      }
       
       // Если сообщений не было (первое сообщение в чате), обновляем название чата
       if (messages.length === 0 || (messages.length === 1 && messages[0].role === 'assistant')) {
@@ -545,7 +569,7 @@ export function BpmnChat() {
                 readOnly={true}
                 piperflowText={message.piperflowText}
                 initialRecommendations={message.recommendations}
-                chatEntryId={parseInt(message.id.replace('assistant-', ''))}
+                chatEntryId={message.historyId}
               />
             </div>
             
