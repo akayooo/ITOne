@@ -175,7 +175,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       toast({
         title: "Ошибка",
         description: errorMessage,
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     } finally {
       setIsLoading(false);
@@ -207,7 +208,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       toast({
         title: "Применение рекомендаций",
         description: "Пожалуйста, подождите...",
-        duration: 3000
+        duration: 2000
       });
       
       chatApi.applyRecommendations(piperflowText, selectedRecs)
@@ -221,7 +222,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
             
             toast({
               title: "Рекомендации применены",
-              description: "Выбранные рекомендации успешно применены к диаграмме"
+              description: "Выбранные рекомендации успешно применены к диаграмме",
+              duration: 3000
             });
             
             // Close the panel after successful application
@@ -236,7 +238,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
           toast({
             title: "Ошибка",
             description: err.message || "Произошла ошибка при применении рекомендаций",
-            variant: "destructive"
+            variant: "destructive",
+            duration: 3000
           });
         })
         .finally(() => {
@@ -246,7 +249,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       toast({
         title: "Внимание",
         description: "Не выбрано ни одной рекомендации",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };
@@ -703,7 +707,8 @@ export function BpmnEditor({
           onSave(xml);
           toast({
             title: "Диаграмма сохранена",
-            description: "BPMN диаграмма успешно сохранена"
+            description: "BPMN диаграмма успешно сохранена",
+            duration: 3000
           });
         })
         .catch((err: any) => {
@@ -711,7 +716,8 @@ export function BpmnEditor({
           toast({
             title: "Ошибка",
             description: "Не удалось сохранить диаграмму",
-            variant: "destructive"
+            variant: "destructive",
+            duration: 3000
           });
         });
     } catch (err) {
@@ -719,7 +725,8 @@ export function BpmnEditor({
       toast({
         title: "Ошибка",
         description: "Не удалось сохранить диаграмму",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };
@@ -854,14 +861,16 @@ export function BpmnEditor({
       
       toast({
         title: "Экспорт BPMN",
-        description: "Диаграмма успешно экспортирована в формат BPMN"
+        description: "Диаграмма успешно экспортирована в формат BPMN",
+        duration: 3000
       });
     } catch (err) {
       console.error('Error exporting as BPMN:', err);
       toast({
         title: "Ошибка",
         description: "Не удалось экспортировать в формат BPMN",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };
@@ -894,7 +903,8 @@ export function BpmnEditor({
             
             toast({
               title: "Диаграмма сохранена",
-              description: "Обновленная диаграмма сохранена в базе данных"
+              description: "Обновленная диаграмма сохранена в базе данных",
+              duration: 3000
             });
           })
           .catch(err => {
@@ -903,7 +913,8 @@ export function BpmnEditor({
             toast({
               title: "Ошибка сохранения",
               description: "Не удалось сохранить обновленную диаграмму в базе данных",
-              variant: "destructive"
+              variant: "destructive",
+              duration: 3000
             });
           });
       }
@@ -916,7 +927,8 @@ export function BpmnEditor({
       
       toast({
         title: "Диаграмма обновлена",
-        description: "Диаграмма успешно обновлена с учетом изменений"
+        description: "Диаграмма успешно обновлена с учетом изменений",
+        duration: 3000
       });
     } catch (error) {
       console.error('Error updating diagram with recommendations:', error);
@@ -943,7 +955,8 @@ export function BpmnEditor({
                     
                     toast({
                       title: "Диаграмма сохранена",
-                      description: "Обновленная диаграмма сохранена в базе данных"
+                      description: "Обновленная диаграмма сохранена в базе данных",
+                      duration: 3000
                     });
                   })
                   .catch(err => {
@@ -952,21 +965,24 @@ export function BpmnEditor({
                     toast({
                       title: "Ошибка сохранения",
                       description: "Не удалось сохранить обновленную диаграмму в базе данных",
-                      variant: "destructive"
+                      variant: "destructive",
+                      duration: 3000
                     });
                   });
               }
               
               toast({
                 title: "Диаграмма обновлена",
-                description: "Диаграмма успешно обновлена с использованием API"
+                description: "Диаграмма успешно обновлена с использованием API",
+                duration: 3000
               });
             } catch (err) {
               console.error("Error converting piperflow from API:", err);
               toast({
                 title: "Ошибка обновления",
                 description: "Не удалось конвертировать piperflow из API",
-                variant: "destructive"
+                variant: "destructive",
+                duration: 3000
               });
             }
           } else {
@@ -978,7 +994,8 @@ export function BpmnEditor({
           toast({
             title: "Ошибка обновления",
             description: "Не удалось обновить диаграмму с новыми рекомендациями",
-            variant: "destructive"
+            variant: "destructive",
+            duration: 3000
           });
         });
     }

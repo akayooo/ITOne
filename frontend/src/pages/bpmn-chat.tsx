@@ -211,7 +211,6 @@ export function BpmnChat() {
               
               // Сохраняем рекомендации, если они есть
               if (bpmnResult.recommendations) {
-                response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
                 recommendations = bpmnResult.recommendations;
               }
               
@@ -251,7 +250,6 @@ export function BpmnChat() {
             // Сохраняем рекомендации, если они есть
             if (bpmnResult.recommendations) {
               console.log('Recommendations received:', bpmnResult.recommendations);
-              response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
             }
             
             try {
@@ -262,7 +260,8 @@ export function BpmnChat() {
               toast({
                 title: "Ошибка преобразования",
                 description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
-                variant: "destructive"
+                variant: "destructive",
+                duration: 3000
               });
             }
             
@@ -323,7 +322,8 @@ export function BpmnChat() {
           toast({
             title: "Ошибка",
             description: "Не удалось сохранить историю чата",
-            variant: "destructive"
+            variant: "destructive",
+            duration: 3000
           })
         }
       }
@@ -351,7 +351,8 @@ export function BpmnChat() {
       toast({
         title: "Ошибка",
         description: "Не удалось обработать сообщение",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       })
     } finally {
       setIsLoading(false)
@@ -418,7 +419,8 @@ export function BpmnChat() {
           toast({
             title: "Ошибка доступа к микрофону",
             description: err instanceof Error ? err.message : "Неизвестная ошибка",
-            variant: "destructive"
+            variant: "destructive",
+            duration: 3000
           })
           wsRef.current?.close()
         }
@@ -434,7 +436,8 @@ export function BpmnChat() {
         setSpeechStatus('')
         toast({
           title: "Ошибка WebSocket соединения",
-          variant: "destructive"
+          variant: "destructive",
+          duration: 3000
         })
       }
       
@@ -449,7 +452,8 @@ export function BpmnChat() {
       toast({
         title: "Ошибка",
         description: err instanceof Error ? err.message : "Неизвестная ошибка",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       })
     }
   }
@@ -520,7 +524,8 @@ export function BpmnChat() {
         toast({
           title: "Ошибка",
           description: "Не удалось скопировать сообщение",
-          variant: "destructive"
+          variant: "destructive",
+          duration: 3000
         });
       });
   };
