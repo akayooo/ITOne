@@ -425,9 +425,9 @@ export const convertPiperflowToBpmn = (piperflowText: string): string => {
     
     // Add pool shapes with coordinates
     let poolY = 0;
-    const POOL_HEIGHT = 600;
+    const POOL_HEIGHT = 1600;
     const LANE_HEIGHT = 500;
-    const POOL_WIDTH = 1200;
+    const POOL_WIDTH = 3600;
     const HORIZONTAL_SPACING = 180;
     const VERTICAL_SPACING = 150;
     const ELEMENT_SPACING = 250;

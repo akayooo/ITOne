@@ -168,9 +168,9 @@ export const chatApi = {
   },
   
   // Generate BPMN diagram from text description
-  generateBpmnDiagram: async (description: string, requestId?: string, existingPiperflow?: string): Promise<{
+  generateBpmnDiagram: async (description: string, requestId?: string, previousBpmnXml?: string): Promise<{
     success: boolean;
-    text?: string;
+    bpmn_xml?: string;
     error?: string;
     recommendations?: string;
     is_bpmn_request?: boolean;
@@ -181,25 +181,30 @@ export const chatApi = {
         business_requirements: "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
       };
 
-      // If we have existing piperflow, add it to the request
-      if (existingPiperflow) {
-        payload.piperflow_text = existingPiperflow;
-        console.log("Sending request to modify existing diagram");
+      // If we have existing XML, add it to the request
+      if (previousBpmnXml) {
+        payload.previous_bpmn_xml = previousBpmnXml; 
+        console.log("Sending request to modify existing diagram using previous XML");
+      } else {
+        console.log("Sending request to generate new diagram");
       }
       
       const response = await api.post('/api/bpmn/process_bpmn', payload);
       
       return {
         success: response.data.status === "success",
-        text: response.data.piperflow_text,
+        bpmn_xml: response.data.bpmn_xml,
         recommendations: response.data.recommendations,
         is_bpmn_request: true
       };
     } catch (error: any) {
-      console.error("Error generating BPMN diagram:", error);
+      console.error("Error generating/processing BPMN diagram:", error);
+      const detail = error.response?.data?.detail || "Ошибка при обработке BPMN диаграммы";
+      const partialXml = error.response?.data?.bpmn_xml;
       return {
         success: false, 
-        error: error.response?.data?.detail || "Ошибка при создании диаграммы"
+        error: detail,
+        bpmn_xml: partialXml
       };
     }
   },

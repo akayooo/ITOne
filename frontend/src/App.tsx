@@ -7,6 +7,7 @@ import { ChatLayout } from "@/components/layout/chat-layout"
 import { BpmnChat } from "@/pages/bpmn-chat"
 import { DiagramsPage } from "@/pages/diagrams"
 import { BpmnEditorPage } from "@/pages/bpmn-editor"
+import OcrUploadPage from "@/pages/OcrUploadPage"
 
 function App() {
   const { isAuthenticated, checkAuth } = useAuthStore()
@@ -63,6 +64,16 @@ function App() {
         element={
           <ProtectedRoute>
             <BpmnEditorPage />
+          </ProtectedRoute>
+        } 
+      />
+      
+      {/* OCR Upload Route */}
+      <Route 
+        path="/ocr-upload" 
+        element={
+          <ProtectedRoute>
+            <OcrUploadPage />
           </ProtectedRoute>
         } 
       />

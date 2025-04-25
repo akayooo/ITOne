@@ -1,13 +1,18 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { SendIcon, MicIcon, XIcon, Loader2, Copy, Check } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { SendIcon, MicIcon, XIcon, Loader2, Copy, Check, Paperclip } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { ChatHistoryEntry, chatApi } from "@/lib/api"
 import { useAuthStore } from "@/lib/auth"
 import { BpmnEditor } from "@/components/bpmn-editor/BpmnEditor"
 import { convertPiperflowToBpmn } from "@/lib/bpmn-service"
+import axios from 'axios'
+
+// URL for the OCR backend service
+const OCR_API_URL = 'http://localhost:8001/ocr';
 
 // Add TypeScript declaration for webkitAudioContext
 declare global {
@@ -27,7 +32,6 @@ interface Message {
   isUploading?: boolean
   isResending?: boolean
   bpmnXml?: string
-  piperflowText?: string
   recommendations?: string
 }
 
@@ -40,7 +44,10 @@ export function BpmnChat() {
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [speechStatus, setSpeechStatus] = useState('')
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast()
   const wsRef = useRef<WebSocket | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -93,7 +100,6 @@ export function BpmnChat() {
           content: entry.response,
           timestamp: new Date(entry.created_at),
           bpmnXml: entry.piperflow_text ? convertPiperflowToBpmn(entry.piperflow_text) : undefined,
-          piperflowText: entry.piperflow_text,
           recommendations: entry.recommendations
         }
       ]).flat()
@@ -123,7 +129,6 @@ export function BpmnChat() {
     
     if (input.trim() === '' || !chatId || !user?.id) return
     
-    // Add user message to UI immediately
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -136,162 +141,68 @@ export function BpmnChat() {
     setIsLoading(true)
     
     try {
-      // Определяем тип запроса с помощью нашей новой функции, которая теперь использует бэкенд
       const requestType = await chatApi.determineBpmnRequestType(input);
       console.log('Backend identified request type:', requestType);
       
-      let response = '';
-      let bpmnXml = '';
-      let piperflowText = '';
-      let recommendations: string | undefined;
-      
-      // Если запрос на добавление блока (TYPE_2), найдем предыдущую диаграмму
-      if (requestType === 'TYPE_2') {
-        console.log('Backend identified "add block" request (TYPE_2)');
-        // Найти последнее сообщение с диаграммой в истории чата
-        const lastBpmnMessage = [...messages].reverse().find(msg => 
-          msg.piperflowText && msg.piperflowText.length > 0
-        );
-        
-        if (lastBpmnMessage?.piperflowText) {
-          console.log('Found previous diagram, sending modification request');
-          
-          try {
-            // Отправляем запрос с предыдущей диаграммой и текущим запросом
-            const bpmnResult = await chatApi.generateBpmnDiagram(input.trim(), undefined, lastBpmnMessage.piperflowText);
-            
-            if (bpmnResult.success && bpmnResult.text) {
-              response = "Вот обновленная BPMN диаграмма с добавленными блоками:";
-              
-              // Save the PiperFlow text for the BPMN editor
-              piperflowText = bpmnResult.text;
-              
-              // Сохраняем рекомендации, если они есть
-              if (bpmnResult.recommendations) {
-                recommendations = bpmnResult.recommendations;
-              }
-              
-              try {
-                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-              } catch (error) {
-                console.error('Error converting PiperFlow to BPMN XML:', error);
-              }
-            } else {
-              response = `Не удалось обновить BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
-              console.error('BPMN update failed:', bpmnResult.error);
-            }
-          } catch (error) {
-            console.error('Error calling BPMN modification API:', error);
-            response = "Ошибка при обновлении BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
-          }
-        } else {
-          response = "Не найдена предыдущая BPMN диаграмма для редактирования. Сначала создайте диаграмму.";
-        }
-      } 
-      // Если запрос на редактирование (TYPE_3), найдем предыдущую диаграмму
-      else if (requestType === 'TYPE_3') {
-        console.log('Backend identified "edit diagram" request (TYPE_3)');
-        // Найти последнее сообщение с диаграммой в истории чата
-        const lastBpmnMessage = [...messages].reverse().find(msg => 
-          msg.piperflowText && msg.piperflowText.length > 0
-        );
-        
-        if (lastBpmnMessage?.piperflowText) {
-          console.log('Found previous diagram, sending edit request');
-          
-          try {
-            // Отправляем запрос с предыдущей диаграммой и текущим запросом
-            const bpmnResult = await chatApi.generateBpmnDiagram(input.trim(), undefined, lastBpmnMessage.piperflowText);
-            
-            if (bpmnResult.success && bpmnResult.text) {
-              response = "Вот отредактированная BPMN диаграмма:";
-              
-              // Save the PiperFlow text for the BPMN editor
-              piperflowText = bpmnResult.text;
-              
-              // Сохраняем рекомендации, если они есть
-              if (bpmnResult.recommendations) {
-                recommendations = bpmnResult.recommendations;
-              }
-              
-              try {
-                bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-              } catch (error) {
-                console.error('Error converting PiperFlow to BPMN XML:', error);
-              }
-            } else {
-              response = `Не удалось отредактировать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
-              console.error('BPMN edit failed:', bpmnResult.error);
-            }
-          } catch (error) {
-            console.error('Error calling BPMN edit API:', error);
-            response = "Ошибка при редактировании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
-          }
-        } else {
-          response = "Не найдена предыдущая BPMN диаграмма для редактирования. Сначала создайте диаграмму.";
-        }
-      }
-      // Если запрос на создание новой диаграммы (TYPE_1)
-      else if (requestType === 'TYPE_1') {
-        console.log('Backend identified "create new diagram" request (TYPE_1)');
-        
-        try {
-          console.log('Sending BPMN generation request for:', input.trim());
-          const bpmnResult = await chatApi.generateBpmnDiagram(input.trim());
-          console.log('BPMN result received:', bpmnResult);
-          
-          if (bpmnResult.success && bpmnResult.text) {
-            response = "Вот созданная BPMN диаграмма на основе вашего описания:";
-            
-            // Save the PiperFlow text for the BPMN editor
-            piperflowText = bpmnResult.text;
-            console.log('PiperFlow text received from API:', piperflowText);
-            
-            // Сохраняем рекомендации, если они есть
-            if (bpmnResult.recommendations) {
-              console.log('Recommendations received:', bpmnResult.recommendations);
-            }
-            
-            try {
-              bpmnXml = convertPiperflowToBpmn(bpmnResult.text);
-              console.log('BPMN XML converted successfully, length:', bpmnXml.length);
-            } catch (convError) {
-              console.error('Error converting PiperFlow to BPMN XML:', convError);
-              toast({
-                title: "Ошибка преобразования",
-                description: "Не удалось преобразовать PiperFlow в BPMN диаграмму",
-                variant: "destructive",
-                duration: 3000
-              });
-            }
-            
-            // Используем рекомендации из полученного результата
-            if (bpmnResult.recommendations) {
-              recommendations = bpmnResult.recommendations;
-            }
+      let responseContent = '';
+      let bpmnXmlResult = '';
+      let recommendationsResult: string | undefined;
+
+      // --- Prepare previous XML for edit/add requests --- 
+      let previousBpmnXml: string | undefined = undefined;
+      if (requestType === 'TYPE_2' || requestType === 'TYPE_3') {
+          const lastBpmnMessage = [...messages].reverse().find(msg => 
+              msg.bpmnXml && msg.bpmnXml.length > 0
+          );
+          if (lastBpmnMessage?.bpmnXml) {
+              previousBpmnXml = lastBpmnMessage.bpmnXml;
+              console.log('Found previous BPMN XML for modification request');
           } else {
-            response = `Не удалось создать BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
-            console.error('BPMN generation failed:', bpmnResult.error);
+              console.log('No previous BPMN XML found for modification, will attempt to create new.');
+              // If previous XML needed but not found, API call will fallback to TYPE_1 handling
           }
-        } catch (error) {
-          console.error('Error calling BPMN generation API:', error);
-          response = "Ошибка при создании BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
-        }
       }
-      // Не BPMN запрос или неизвестный тип
-      else {
-        response = "Ваш запрос не распознан как запрос на создание или редактирование BPMN диаграммы.";
+      
+      // --- Call API to process BPMN --- 
+      try {
+          console.log(`Sending request type ${requestType} to backend...`);
+          const bpmnResult = await chatApi.generateBpmnDiagram(
+              input.trim(), 
+              undefined, // requestId not used currently
+              previousBpmnXml // Pass previous XML if found
+          );
+          console.log('BPMN result received from backend:', bpmnResult);
+
+          if (bpmnResult.success && bpmnResult.bpmn_xml) {
+              responseContent = requestType === 'TYPE_1' 
+                  ? "Вот созданная BPMN диаграмма на основе вашего описания:" 
+                  : "Вот обновленная BPMN диаграмма:";
+              
+              bpmnXmlResult = bpmnResult.bpmn_xml; // Assign XML directly
+              recommendationsResult = bpmnResult.recommendations; // Get recommendations if any
+              console.log('BPMN XML received successfully, length:', bpmnXmlResult.length);
+          } else {
+              responseContent = `Не удалось ${requestType === 'TYPE_1' ? 'создать' : 'обновить'} BPMN диаграмму: ${bpmnResult.error || 'Неизвестная ошибка'}`;
+              console.error(`BPMN ${requestType === 'TYPE_1' ? 'generation' : 'update'} failed:`, bpmnResult.error);
+              // If backend returns partial XML in case of error, we might still want to display it
+              if (bpmnResult.bpmn_xml) {
+                  bpmnXmlResult = bpmnResult.bpmn_xml;
+                  console.log('Received partial/error BPMN XML from backend');
+              }
+          }
+      } catch (error) {
+          console.error('Error calling BPMN processing API:', error);
+          responseContent = "Ошибка при обработке BPMN диаграммы. Пожалуйста, попробуйте еще раз.";
       }
       
       // Add assistant message to chat history
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: response,
+        content: responseContent,
         timestamp: new Date(),
-        bpmnXml: bpmnXml || undefined,
-        piperflowText: piperflowText || undefined,
-        recommendations: recommendations
+        bpmnXml: bpmnXmlResult || undefined, // Use the direct XML result
+        recommendations: recommendationsResult
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -299,19 +210,22 @@ export function BpmnChat() {
       // Save chat to database if we have a chatId
       if (chatId && user?.id) {
         try {
-          // Save both user message and assistant response in database
+          // --- Save to DB: Backend needs adjustment --- 
+          // --- The saveChatEntry likely still expects piperflow_text --- 
+          // --- For now, sending XML in piperflow field, needs backend fix --- 
+          console.warn("TODO: Backend saveChatEntry endpoint needs update to accept bpmn_xml instead of piperflow_text. Sending XML as piperflow for now.")
           const savedEntry = await chatApi.saveChatEntry({
             user_id: user.id,
             chat_id: chatId,
             message: input,
-            response: response,
-            recommendations: recommendations,
-            piperflow_text: piperflowText
+            response: responseContent,
+            recommendations: recommendationsResult,
+            piperflow_text: bpmnXmlResult // Sending XML here temporarily!
           })
           
           console.log('Chat entry saved with ID:', savedEntry.id)
           
-          // Update the assistantMessage with the database ID for future reference
+          // Update the assistantMessage with the database ID
           setMessages(prev => prev.map(msg => 
             msg.id === assistantMessage.id 
               ? { ...msg, historyId: savedEntry.id }
@@ -530,7 +444,7 @@ export function BpmnChat() {
       });
   };
 
-  // Update the message rendering to include images and a copy button
+  // Update the message rendering
   const renderMessage = (message: Message) => {
     // Проверяем на сообщение об ошибке связанной с нерелевантным запросом
     // Проверка как в тексте сообщения, так и в piperflow тексте
@@ -538,10 +452,10 @@ export function BpmnChat() {
       message.content.includes("Ваш запрос не относится к моей специализации") ||
       message.content.includes("задайте вопрос, касающийся BPMN-диаграмм") ||
       message.content.includes("запрос не относится к моей специализации") ||
-      (message.piperflowText && (
-        message.piperflowText.includes("Запрос не относится к моей специализации") ||
-        message.piperflowText.includes("задайте вопрос, касающийся BPMN-диаграмм") ||
-        message.piperflowText.includes("не относится к моей специализации")
+      (message.bpmnXml && (
+        message.bpmnXml.includes("Запрос не относится к моей специализации") ||
+        message.bpmnXml.includes("задайте вопрос, касающийся BPMN-диаграмм") ||
+        message.bpmnXml.includes("не относится к моей специализации")
       ));
     
     // Проверяем на сообщение "Я интерпретировал ваш запрос..." - для него тоже не показываем диаграмму
@@ -551,20 +465,18 @@ export function BpmnChat() {
     // Объединенное условие - либо сообщение об ошибке, либо сообщение о неверной интерпретации
     const shouldHideEditor = isNotBPMNRelatedError || isGenericMisinterpretation;
     
-    // Если это сообщение с ошибкой нерелевантности, показываем только сообщение об ошибке
-    if (isNotBPMNRelatedError && message.role === 'assistant') {
-      return (
-        <div key={message.id} className="mb-4 text-left">
-          <div className="inline-block max-w-[85%] rounded-xl px-4 py-3 bg-red-50 border border-red-200 text-red-600">
-            {message.piperflowText && message.piperflowText.includes("Запрос не относится к моей специализации") 
-              ? message.piperflowText 
-              : "Запрос не относится к моей специализации. Пожалуйста, задайте вопрос, касающийся моделирования бизнес-процессов, BPMN диаграмм или библиотеки processpiper."}
-          </div>
-          <div className="text-xs text-muted-foreground mt-1 text-left">
-            {new Date(message.timestamp).toLocaleTimeString()}
-          </div>
-        </div>
-      );
+    if (message.role === 'assistant' && shouldHideEditor && message.content.includes("не относится к моей специализации")) {
+       // Simplified rendering for non-BPMN related error
+       return (
+         <div key={message.id} className="mb-4 text-left">
+           <div className="inline-block max-w-[85%] rounded-xl px-4 py-3 bg-red-50 border border-red-200 text-red-600">
+             {message.content} 
+           </div>
+           <div className="text-xs text-muted-foreground mt-1 text-left">
+             {new Date(message.timestamp).toLocaleTimeString()}
+           </div>
+         </div>
+       );
     }
     
     return (
@@ -606,21 +518,9 @@ export function BpmnChat() {
               <BpmnEditor 
                 initialDiagram={message.bpmnXml} 
                 readOnly={true}
-                piperflowText={message.piperflowText}
                 initialRecommendations={message.recommendations}
                 chatEntryId={message.historyId}
               />
-            </div>
-            
-            <div className="mt-2 flex justify-between items-center">
-              <div className="flex gap-2 items-center">
-                <details className="cursor-pointer text-sm text-muted-foreground">
-                  <summary className="font-medium">Показать PiperFlow текст</summary>
-                  <pre className="mt-2 bg-muted p-2 rounded text-left overflow-auto text-xs">
-                    {message.piperflowText}
-                  </pre>
-                </details>
-              </div>
             </div>
           </div>
         ) : null}
@@ -631,24 +531,96 @@ export function BpmnChat() {
     </div>
   )};
 
+  // --- OCR PDF Handling ---
+  const handlePdfUploadClick = () => {
+    fileInputRef.current?.click(); // Trigger hidden file input
+  };
+
+  const handlePdfFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      event.target.value = ''; // Reset file input
+
+      if (file.type !== 'application/pdf') {
+        setOcrError('Пожалуйста, выберите PDF файл.');
+        toast({
+          title: "Неверный тип файла",
+          description: "Можно загружать только PDF файлы.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsOcrLoading(true);
+      setOcrError(null);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await axios.post<{ text: string; pages: number }>(
+          OCR_API_URL,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+        // Insert extracted text into the input field
+        setInput(prevInput => prevInput + response.data.text);
+        toast({
+          title: "Текст извлечен",
+          description: `Текст из файла "${file.name}" добавлен в поле ввода.`,
+        });
+
+      } catch (err: any) {
+        console.error('Error uploading or processing PDF file:', err);
+        let errorMessage = 'Произошла ошибка при обработке PDF файла.';
+        if (axios.isAxiosError(err) && err.response) {
+          errorMessage = err.response.data?.detail || err.message;
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+        setOcrError(`Ошибка OCR: ${errorMessage}`);
+        toast({
+          title: "Ошибка OCR",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setIsOcrLoading(false);
+      }
+    }
+  }, [toast]);
+  // --- End OCR PDF Handling ---
+
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+  };
+
+  if (!chatId) {
+     return (
+      <div className="flex flex-col h-full items-center justify-center text-muted-foreground">
+        Выберите или создайте чат для начала работы.
+      </div>
+    );
+  }
+
+  if (isLoadingHistory) {
+     return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="mt-2 text-muted-foreground">Загрузка истории чата...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat messages */}
       <div className="flex-1 p-4 overflow-y-auto">
-        {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="animate-spin h-6 w-6 mr-2" />
-            <span>Загрузка истории...</span>
-          </div>
-        ) : messages.length > 0 ? (
-          <div className="mx-auto max-w-7xl w-full">
-            {messages.map(renderMessage)}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Начните новый разговор</p>
-          </div>
-        )}
+        {messages.map(renderMessage)}
         <div ref={messagesEndRef} />
       </div>
       
@@ -662,29 +634,56 @@ export function BpmnChat() {
         )}
         
         <form onSubmit={handleSubmit} className="flex space-x-2 max-w-7xl mx-auto">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={canInteract ? "Введите сообщение..." : "Выберите чат для начала общения"}
-            className="flex-1"
-            disabled={!canInteract || isLoading}
+          {/* Hidden File Input for PDF */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handlePdfFileChange}
+            accept=".pdf"
+            style={{ display: 'none' }}
+            disabled={isOcrLoading}
           />
+
+          {/* PDF Upload Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handlePdfUploadClick}
+            disabled={isLoading || isRecording || isOcrLoading}
+            aria-label="Загрузить PDF"
+          >
+            {isOcrLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Paperclip className="h-5 w-5" />
+            )}
+          </Button>
           
           <Button 
             type="button" 
             size="icon"
             variant="outline"
             onClick={toggleRecording}
-            disabled={!canInteract || isLoading}
+            disabled={!canInteract || isLoading || isRecording || isOcrLoading}
             className={isRecording ? 'bg-red-100 hover:bg-red-200 text-red-500' : ''}
           >
             {isRecording ? <XIcon className="h-5 w-5" /> : <MicIcon className="h-5 w-5" />}
           </Button>
           
+          <Textarea
+            value={input}
+            onChange={handleInputChange}
+            placeholder={isRecording ? speechStatus : "Введите сообщение..."}
+            className="flex-1 resize-none min-h-[40px]"
+            rows={1}
+            disabled={isLoading || isRecording || isOcrLoading}
+          />
+          
           <Button 
             type="submit" 
             size="icon"
-            disabled={!input.trim() || !canInteract || isLoading}
+            disabled={input.trim() === '' || !canInteract || isLoading || isRecording || isOcrLoading}
           >
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -693,6 +692,10 @@ export function BpmnChat() {
             )}
           </Button>
         </form>
+        
+        {ocrError && (
+          <p className="text-xs text-destructive mt-1">{ocrError}</p>
+        )}
       </div>
     </div>
   )

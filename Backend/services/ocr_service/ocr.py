@@ -61,74 +61,59 @@ class OCRService:
         if not self.use_tesseract and not self.use_transformers:
             logger.warning("No OCR method is available. Text extraction may be limited.")
     
-    def extract_text(self, file_path: Optional[str] = None, file_bytes: Optional[bytes] = None, 
-                    file_type: Optional[str] = None) -> Dict[str, Any]:
+    def extract_text(self, file_bytes: Optional[bytes] = None, file_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Extract text from various file types.
         
         Args:
-            file_path: Path to the file
             file_bytes: File as bytes
             file_type: Type of file ('pdf', 'image', or auto-detect)
             
         Returns:
             Dictionary with extracted text and metadata
         """
-        if not file_path and not file_bytes:
-            raise ValueError("Either file_path or file_bytes must be provided")
+        if not file_bytes:
+            raise ValueError("file_bytes must be provided")
         
         # Determine file type if not specified
         if not file_type:
-            if file_path:
-                ext = os.path.splitext(file_path)[1].lower()
-                if ext in ['.pdf']:
-                    file_type = 'pdf'
-                elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp']:
-                    file_type = 'image'
-                else:
-                    file_type = 'unknown'
+            # Try to detect from bytes (simple magic bytes check)
+            if file_bytes[:4] == b'%PDF':
+                file_type = 'pdf'
             else:
-                # Try to detect from bytes (simple magic bytes check)
-                if file_bytes[:4] == b'%PDF':
-                    file_type = 'pdf'
-                else:
-                    try:
-                        # Try to open as image
-                        Image.open(io.BytesIO(file_bytes))
-                        file_type = 'image'
-                    except:
-                        file_type = 'unknown'
+                try:
+                    # Try to open as image
+                    Image.open(io.BytesIO(file_bytes))
+                    file_type = 'image'
+                except:
+                    file_type = 'unknown'
         
         # Process based on file type
         if file_type == 'pdf':
-            return self.process_pdf(file_path, file_bytes)
+            return self.process_pdf(file_bytes)
         elif file_type == 'image':
-            text = self.process_image(file_path if file_path else file_bytes)
+            text = self.process_image(file_bytes)
             return {"text": text, "pages": 1}
         else:
             # For unknown file types, try to extract text directly if possible
             return {"text": "File type not supported for text extraction", "pages": 0}
     
-    def process_pdf(self, file_path: Optional[str] = None, file_bytes: Optional[bytes] = None) -> Dict[str, Any]:
+    def process_pdf(self, file_bytes: Optional[bytes] = None) -> Dict[str, Any]:
         """
         Extract text from a PDF file using PyMuPDF with OCR fallback.
         
         Args:
-            file_path: Path to the PDF file
             file_bytes: PDF file as bytes
             
         Returns:
             Dictionary with extracted text and metadata
         """
-        if not file_path and not file_bytes:
-            raise ValueError("Either file_path or file_bytes must be provided")
+        if not file_bytes:
+            raise ValueError("file_bytes must be provided")
         
         try:
             # Open PDF document
-            if file_path:
-                doc = fitz.open(file_path)
-            else:
-                doc = fitz.open(stream=file_bytes, filetype="pdf")
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
             
             results = []
             total_text = ""
@@ -247,63 +232,3 @@ class OCRService:
         image = Image.open(io.BytesIO(image_bytes))
         
         return self.process_image(image)
-
-
-# Example usage
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("Usage: python ocr.py <path_to_pdf_file>")
-        sys.exit(1)
-    
-    pdf_path = sys.argv[1]
-    
-    if not os.path.exists(pdf_path):
-        print(f"Error: File '{pdf_path}' not found")
-        sys.exit(1)
-    
-    if not pdf_path.lower().endswith('.pdf'):
-        print(f"Error: File '{pdf_path}' is not a PDF file")
-        sys.exit(1)
-    
-    print(f"Processing PDF file: {pdf_path}")
-    
-    # Initialize OCR service
-    ocr_service = OCRService(use_transformers=True)
-    
-    # Extract text from PDF
-    result = ocr_service.extract_text(file_path=pdf_path)
-    
-    # Print extracted text
-    print("\n" + "="*50 + " EXTRACTED TEXT " + "="*50 + "\n")
-    print(result["text"])
-    print("\n" + "="*120 + "\n")
-    
-    # Print page statistics
-    print(f"Total pages processed: {result['pages']}")
-    
-    # Print per-page text if needed
-    if result["pages"] > 1:
-        print("\nWould you like to see text from specific pages? (y/n)")
-        choice = input().lower()
-        
-        if choice == 'y':
-            while True:
-                print(f"Enter page number (1-{result['pages']}) or 'q' to quit:")
-                page_input = input()
-                
-                if page_input.lower() == 'q':
-                    break
-                
-                try:
-                    page_num = int(page_input)
-                    if 1 <= page_num <= result['pages']:
-                        page_text = result['page_results'][page_num-1]['text']
-                        print("\n" + "-"*50 + f" PAGE {page_num} " + "-"*50 + "\n")
-                        print(page_text)
-                        print("\n" + "-"*120 + "\n")
-                    else:
-                        print(f"Page number must be between 1 and {result['pages']}")
-                except ValueError:
-                    print("Please enter a valid page number")
