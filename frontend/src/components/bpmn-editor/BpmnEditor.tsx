@@ -3,7 +3,7 @@ import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import { Button } from "@/components/ui/button";
-import { Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, FileText, Lightbulb } from "lucide-react";
+import { Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, FileText, Lightbulb, CheckSquare, XSquare, Check, ListChecks, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { chatApi } from "@/lib/api";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -154,23 +154,23 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-10">
+    <div className="absolute bottom-0 left-0 right-0 z-40">
       {!isOpen ? (
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-end mr-6 mb-6">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
                   variant="secondary" 
-                  className="rounded-full" 
-                  size="icon"
+                  className="rounded-full shadow-md aspect-square p-0" 
+                  style={{ width: "48px", height: "48px" }}
                   onClick={fetchRecommendations}
                   disabled={isLoading}
                 >
                   {isLoading ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    <RefreshCw className="h-7 w-7 animate-spin" />
                   ) : (
-                    <Lightbulb className="h-5 w-5" />
+                    <Lightbulb className="h-7 w-7" />
                   )}
                 </Button>
               </TooltipTrigger>
@@ -187,8 +187,8 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
               <Lightbulb className="h-5 w-5 text-yellow-500" />
               Рекомендации по улучшению диаграммы
             </h3>
-            <Button variant="outline" size="sm" onClick={() => setIsOpen(false)}>
-              Скрыть
+            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="close-btn">
+              <X className="h-4 w-4" />
             </Button>
           </div>
           
@@ -235,27 +235,53 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
               </Badge>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setRecommendationItems(items => items.map(item => ({ ...item, selected: true })))}
-              >
-                Выбрать все
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setRecommendationItems(items => items.map(item => ({ ...item, selected: false })))}
-              >
-                Сбросить все
-              </Button>
-              <Button 
-                variant="default" 
-                onClick={applySelectedRecommendations} 
-                disabled={recommendationItems.filter(item => item.selected).length === 0}
-              >
-                Применить выбранные
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => {
+                        const allSelected = recommendationItems.every(item => item.selected);
+                        setRecommendationItems(items => 
+                          items.map(item => ({ ...item, selected: !allSelected }))
+                        );
+                      }}
+                      className="select-btn recommendations-btn"
+                    >
+                      {recommendationItems.every(item => item.selected) 
+                        ? <XSquare className="h-4 w-4" /> 
+                        : <ListChecks className="h-4 w-4" />
+                      }
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {recommendationItems.every(item => item.selected) 
+                      ? <p>Сбросить все</p> 
+                      : <p>Выбрать все</p>
+                    }
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="default" 
+                      size="icon"
+                      onClick={applySelectedRecommendations} 
+                      disabled={recommendationItems.filter(item => item.selected).length === 0}
+                      className="apply-btn recommendations-btn"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Применить выбранные</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>

@@ -557,32 +557,6 @@ export function BpmnChat() {
                   </pre>
                 </details>
               </div>
-              
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  // Redirect to full editor with piperflow text
-                  const params = new URLSearchParams();
-                  if (message.piperflowText) {
-                    console.log('PiperFlow being sent to editor:', message.piperflowText);
-                    
-                    // Очистить и закодировать текст правильно
-                    const cleanText = message.piperflowText.replace(/[\r\n]+/g, '\n').trim();
-                    params.set('piperflow', btoa(cleanText));
-                  } else {
-                    console.log('No PiperFlow text available to send to editor');
-                  }
-                  if (message.recommendations) {
-                    params.set('recommendations', btoa(message.recommendations));
-                  }
-                  const editorUrl = `/diagram-editor?${params.toString()}`;
-                  console.log('Opening editor URL:', editorUrl);
-                  window.open(editorUrl, '_blank');
-                }}
-              >
-                Редактировать диаграмму
-              </Button>
             </div>
           </div>
         ) : null}

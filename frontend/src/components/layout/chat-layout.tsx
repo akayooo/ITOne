@@ -357,13 +357,6 @@ export function ChatLayout() {
         <div className="mt-auto p-2 border-t">
           <div className="space-y-1">
             <Link
-              to="/chat/diagrams"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
-            >
-              <FileSpreadsheet className="h-4 w-4" />
-              <span>Мои диаграммы</span>
-            </Link>
-            <Link
               to="/chat/settings"
               className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
             >
