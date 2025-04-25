@@ -454,10 +454,46 @@ export function BpmnChat() {
   };
 
   // Update the message rendering to include images and a copy button
-  const renderMessage = (message: Message) => (
+  const renderMessage = (message: Message) => {
+    // Проверяем на сообщение об ошибке связанной с нерелевантным запросом
+    // Проверка как в тексте сообщения, так и в piperflow тексте
+    const isNotBPMNRelatedError = 
+      message.content.includes("Ваш запрос не относится к моей специализации") ||
+      message.content.includes("задайте вопрос, касающийся BPMN-диаграмм") ||
+      message.content.includes("запрос не относится к моей специализации") ||
+      (message.piperflowText && (
+        message.piperflowText.includes("Запрос не относится к моей специализации") ||
+        message.piperflowText.includes("задайте вопрос, касающийся BPMN-диаграмм") ||
+        message.piperflowText.includes("не относится к моей специализации")
+      ));
+    
+    // Проверяем на сообщение "Я интерпретировал ваш запрос..." - для него тоже не показываем диаграмму
+    const isGenericMisinterpretation = 
+      message.content.includes("Я интерпретировал ваш запрос как просьбу создать BPMN диаграмму");
+    
+    // Объединенное условие - либо сообщение об ошибке, либо сообщение о неверной интерпретации
+    const shouldHideEditor = isNotBPMNRelatedError || isGenericMisinterpretation;
+    
+    // Если это сообщение с ошибкой нерелевантности, показываем только сообщение об ошибке
+    if (isNotBPMNRelatedError && message.role === 'assistant') {
+      return (
+        <div key={message.id} className="mb-4 text-left">
+          <div className="inline-block max-w-[85%] rounded-xl px-4 py-3 bg-red-50 border border-red-200 text-red-600">
+            {message.piperflowText && message.piperflowText.includes("Запрос не относится к моей специализации") 
+              ? message.piperflowText 
+              : "Запрос не относится к моей специализации. Пожалуйста, задайте вопрос, касающийся моделирования бизнес-процессов, BPMN диаграмм или библиотеки processpiper."}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1 text-left">
+            {new Date(message.timestamp).toLocaleTimeString()}
+          </div>
+        </div>
+      );
+    }
+    
+    return (
     <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
       <div 
-        className={`${message.bpmnXml ? 'inline-block w-full max-w-full' : 'inline-block max-w-[85%]'} rounded-xl px-4 py-3 ${
+        className={`${message.bpmnXml && !shouldHideEditor ? 'inline-block w-full max-w-full' : 'inline-block max-w-[85%]'} rounded-xl px-4 py-3 ${
           message.role === 'user' 
             ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
             : 'bg-muted'
@@ -480,8 +516,10 @@ export function BpmnChat() {
           </Button>
         </div>
         
-        {/* Use the BpmnEditor component if we have BPMN XML */}
-        {message.bpmnXml ? (
+        {isGenericMisinterpretation && !isNotBPMNRelatedError ? (
+          // Для сообщений "Я интерпретировал..." просто не показываем редактор
+          null
+        ) : message.bpmnXml && !shouldHideEditor ? (
           <div className="mt-4 w-full">
             <div className="rounded bg-white border shadow-sm overflow-hidden" 
                  style={{ 
@@ -577,7 +615,7 @@ export function BpmnChat() {
         {new Date(message.timestamp).toLocaleTimeString()}
       </div>
     </div>
-  );
+  )};
 
   return (
     <div className="flex flex-col h-full">
