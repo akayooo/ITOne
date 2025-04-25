@@ -207,61 +207,20 @@ export const chatApi = {
   // Determine BPMN request type (new diagram, add block, or edit)
   determineBpmnRequestType: async (message: string): Promise<'TYPE_1' | 'TYPE_2' | 'TYPE_3' | 'NOT_BPMN'> => {
     try {
-      const addBlockPatterns = [
-        'добавь новый блок', 
-        'добавить новый блок',
-        'добавь блок', 
-        'добавить блок',
-        'добавить еще один шаг',
-        'добавь еще один шаг',
-        'дополнить диаграмму',
-        'добавь этап',
-        'добавить этап',
-        'расширить схему',
-        'нужно добавить',
-        'включи в диаграмму'
-      ];
+      console.log("Calling backend to determine request type");
       
-      const editPatterns = [
-        'редактировать диаграмму',
-        'изменить диаграмму',
-        'исправить диаграмму',
-        'обнови диаграмму',
-        'улучшить диаграмму',
-        'переделать диаграмму'
-      ];
+      const response = await api.post('/api/bpmn/determine_request_type', {
+        message: message
+      });
       
-      const bpmnPatterns = [
-        'диаграмм', 
-        'bpmn',
-        'схема процесса',
-        'схему процесса',
-        'бизнес-процесс',
-        'process diagram',
-        'нарисуй',
-        'построй',
-        'показать процесс',
-        'визуализируй'
-      ];
+      console.log("Backend determined request type:", response.data.type);
       
-      const lowerMessage = message.toLowerCase();
-      
-      // Check if it's an add block request
-      if (addBlockPatterns.some(pattern => lowerMessage.includes(pattern))) {
-        return 'TYPE_2';
+      if (response.data.type === 'TYPE_1' || 
+          response.data.type === 'TYPE_2' || 
+          response.data.type === 'TYPE_3') {
+        return response.data.type;
       }
       
-      // Check if it's an edit request
-      if (editPatterns.some(pattern => lowerMessage.includes(pattern))) {
-        return 'TYPE_3';
-      }
-      
-      // Check if it's a new diagram request
-      if (bpmnPatterns.some(pattern => lowerMessage.includes(pattern))) {
-        return 'TYPE_1';
-      }
-      
-      // Not a BPMN request
       return 'NOT_BPMN';
     } catch (error) {
       console.error("Error determining BPMN request type:", error);

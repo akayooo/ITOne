@@ -136,9 +136,9 @@ export function BpmnChat() {
     setIsLoading(true)
     
     try {
-      // Определяем тип запроса с помощью нашей новой функции
+      // Определяем тип запроса с помощью нашей новой функции, которая теперь использует бэкенд
       const requestType = await chatApi.determineBpmnRequestType(input);
-      console.log('Determined request type:', requestType);
+      console.log('Backend identified request type:', requestType);
       
       let response = '';
       let bpmnXml = '';
@@ -147,7 +147,7 @@ export function BpmnChat() {
       
       // Если запрос на добавление блока (TYPE_2), найдем предыдущую диаграмму
       if (requestType === 'TYPE_2') {
-        console.log('Detected "add block" request (TYPE_2)');
+        console.log('Backend identified "add block" request (TYPE_2)');
         // Найти последнее сообщение с диаграммой в истории чата
         const lastBpmnMessage = [...messages].reverse().find(msg => 
           msg.piperflowText && msg.piperflowText.length > 0
@@ -190,7 +190,7 @@ export function BpmnChat() {
       } 
       // Если запрос на редактирование (TYPE_3), найдем предыдущую диаграмму
       else if (requestType === 'TYPE_3') {
-        console.log('Detected "edit diagram" request (TYPE_3)');
+        console.log('Backend identified "edit diagram" request (TYPE_3)');
         // Найти последнее сообщение с диаграммой в истории чата
         const lastBpmnMessage = [...messages].reverse().find(msg => 
           msg.piperflowText && msg.piperflowText.length > 0
@@ -234,7 +234,7 @@ export function BpmnChat() {
       }
       // Если запрос на создание новой диаграммы (TYPE_1)
       else if (requestType === 'TYPE_1') {
-        console.log('Detected "create new diagram" request (TYPE_1)');
+        console.log('Backend identified "create new diagram" request (TYPE_1)');
         
         try {
           console.log('Sending BPMN generation request for:', input.trim());

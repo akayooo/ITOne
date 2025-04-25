@@ -544,6 +544,40 @@ async def clear_recommendations(request: ClearRecommendationsRequest):
             error=str(e)
         )
 
+# Add a new endpoint for determining request type
+class RequestTypeRequest(BaseModel):
+    message: str
+
+class RequestTypeResponse(BaseModel):
+    type: str
+    is_bpmn_related: bool
+
+@router.post("/determine_request_type", response_model=RequestTypeResponse)
+async def determine_request_type(request: RequestTypeRequest):
+    try:
+        print(f"[INFO] Determining request type for: {request.message[:100]}...")
+        
+        # First check if the request is BPMN related
+        is_bpmn_related = validate_bpmn_request(request.message)
+        
+        # If it's BPMN related, determine the type
+        if is_bpmn_related:
+            request_type = type_choose(request.message)
+            print(f"[INFO] Request type determined: {request_type}")
+        else:
+            request_type = "NOT_BPMN"
+            print(f"[INFO] Request is not BPMN related")
+        
+        return RequestTypeResponse(
+            type=request_type,
+            is_bpmn_related=is_bpmn_related
+        )
+    except Exception as e:
+        print(f"Error in determine_request_type: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 # After the apply_recommendations endpoint, add the recommendations endpoint
 
 class GenerateRecommendationsRequest(BaseModel):
