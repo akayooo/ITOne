@@ -363,6 +363,14 @@ export function BpmnEditor({
       const modeler = new BpmnModeler({
         container,
         keyboard: { bindTo: container },
+        // Улучшение отображения
+        additionalModules: [
+          // Можно добавить дополнительные модули здесь
+        ],
+        // Параметры отображения
+        canvas: {
+          deferUpdate: false
+        }
       });
       
       modelerRef.current = modeler;
@@ -436,8 +444,35 @@ export function BpmnEditor({
           try {
             const canvas = modelerRef.current?.get('canvas') as any;
             if (canvas) {
-              // Fit diagram to viewport
-              canvas.zoom('fit-viewport', 'auto');
+              // Подождать больше времени перед масштабированием для гарантии загрузки
+              setTimeout(() => {
+                // Увеличиваем отступы для видимости всех элементов
+                canvas.viewbox({
+                  x: 0,
+                  y: 0,
+                  width: 1600,
+                  height: 800
+                });
+                
+                // Подождем еще немного и выполним масштабирование
+                setTimeout(() => {
+                  // Fit diagram to viewport с дополнительным отступом
+                  canvas.zoom('fit-viewport', 'auto');
+                  
+                  // Уменьшаем масштаб на 20% для обеспечения дополнительного пространства
+                  const currentZoom = canvas.zoom();
+                  canvas.zoom(currentZoom * 0.8);
+                  
+                  // Центрируем диаграмму
+                  const viewbox = canvas.viewbox();
+                  canvas.viewbox({
+                    x: viewbox.x - 20,
+                    y: viewbox.y - 20,
+                    width: viewbox.width + 40,
+                    height: viewbox.height + 40
+                  });
+                }, 100);
+              }, 300);
             }
           } catch (err) {
             console.warn('Error adjusting canvas:', err);
@@ -457,25 +492,90 @@ export function BpmnEditor({
     }
   };
 
-  const handleResize = () => {
+  // Обновляем функцию updateSize для лучшего отображения диаграмм
+  const updateSize = () => {
     if (!modelerRef.current) return;
     
     try {
       const canvas = modelerRef.current.get('canvas') as any;
       if (canvas) {
         canvas.resized();
-        canvas.zoom('fit-viewport', 'auto');
+        
+        // Небольшая задержка для корректного ресайза
+        setTimeout(() => {
+          // Получаем текущий viewbox для контроля
+          const viewbox = canvas.viewbox();
+          
+          // Подгоняем под размер с гарантированными отступами
+          canvas.zoom('fit-viewport', 'auto');
+          
+          // Уменьшаем масштаб на 20% для лучшего вида и предотвращения обрезки
+          const currentZoom = canvas.zoom();
+          canvas.zoom(currentZoom * 0.8);
+          
+          // Дополнительные отступы по краям
+          const newViewbox = canvas.viewbox();
+          canvas.viewbox({
+            x: newViewbox.x - 20,
+            y: newViewbox.y - 20,
+            width: newViewbox.width + 40,
+            height: newViewbox.height + 40
+          });
+        }, 200);
       }
     } catch (err) {
       console.warn('Error during resize:', err);
     }
   };
 
-  // Handle container resize
+  // Handle container resize with более надежным методом
   useEffect(() => {
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (!modelerRef.current || !containerRef.current) return;
+  
+    // Запускаем первичное обновление размера
+    updateSize();
+    
+    // Создаем наблюдатель за изменением размера, если браузер поддерживает
+    let resizeObserver: any = null;
+    
+    // Проверяем, поддерживает ли браузер ResizeObserver
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(debounce(() => {
+        updateSize();
+      }, 100));
+      
+      resizeObserver.observe(containerRef.current);
+    } else {
+      // Резервный вариант - используем обработчик события resize окна
+      const handleResize = debounce(() => {
+        updateSize();
+      }, 100);
+      
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
   }, []);
+
+  // Debounce функция для предотвращения слишком частых вызовов
+  function debounce(func: Function, wait: number) {
+    let timeout: any;
+    return function executedFunction(...args: any[]) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  };
 
   // Function to save diagram
   const saveDiagram = () => {
@@ -577,7 +677,46 @@ export function BpmnEditor({
     
     // Allow the DOM to update, then resize the modeler
     setTimeout(() => {
-      handleResize();
+      // Функция handleResize больше не используется, используем updateSize
+      if (modelerRef.current) {
+        try {
+          const canvas = modelerRef.current.get('canvas') as any;
+          if (canvas) {
+            canvas.resized();
+            
+            // Ждем обновления размеров в полноэкранном режиме
+            setTimeout(() => {
+              // Сбрасываем текущие настройки viewbox для предотвращения странного поведения
+              canvas.viewbox({
+                x: 0,
+                y: 0,
+                width: 2000,
+                height: 1000
+              });
+              
+              // Затем подгоняем под размер окна
+              setTimeout(() => {
+                canvas.zoom('fit-viewport', 'auto');
+                
+                // Уменьшаем масштаб для лучшего вида и предотвращения обрезки
+                const currentZoom = canvas.zoom();
+                canvas.zoom(currentZoom * 0.7);
+                
+                // Добавляем отступы
+                const viewbox = canvas.viewbox();
+                canvas.viewbox({
+                  x: viewbox.x - 40,
+                  y: viewbox.y - 40,
+                  width: viewbox.width + 80,
+                  height: viewbox.height + 80
+                });
+              }, 200);
+            }, 300);
+          }
+        } catch (err) {
+          console.warn('Error during resize after fullscreen toggle:', err);
+        }
+      }
     }, 100);
   };
 
@@ -614,7 +753,7 @@ export function BpmnEditor({
 
   // Render diagram container with loading state
   return (
-    <div className={`relative h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''}`}>
+    <div className={`relative h-full flex flex-col ${isFullscreen ? 'fixed inset-0 z-20 bg-background' : ''}`}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
           <div className="flex flex-col items-center">
@@ -634,7 +773,8 @@ export function BpmnEditor({
         </div>
       )}
       
-      <div className="absolute top-4 left-4 right-4 z-50 flex flex-wrap gap-2 bg-background/70 backdrop-blur-sm p-2 rounded-lg shadow-sm">
+      {/* Toolbar fixed at the top */}
+      <div className="flex-shrink-0 z-50 flex flex-wrap gap-2 bg-background/90 backdrop-blur-sm p-2 rounded-lg shadow-sm mb-2 bpmn-toolbar">
         <Button variant="outline" size="icon" onClick={undo} title="Отменить">
           <Undo className="h-4 w-4" />
         </Button>
@@ -666,7 +806,10 @@ export function BpmnEditor({
         )}
       </div>
       
-      <div ref={containerRef} className="h-full bpmn-container pt-16" />
+      {/* Diagram container as flex-grow */}
+      <div className="flex-grow relative overflow-hidden">
+        <div ref={containerRef} className="h-full w-full bpmn-container bpmn-content" />
+      </div>
       
       <RecommendationsPanel 
         piperflowText={piperflowText}
