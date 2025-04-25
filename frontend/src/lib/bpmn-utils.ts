@@ -69,7 +69,7 @@ export const handleBPMNResponse = async (response: Response): Promise<{ data: BP
 
 export const processBPMNRequest = async (request: BPMNRequest): Promise<{ data: BPMNResponse | null; error: BPMNError | null }> => {
   try {
-    const response = await fetch("/api/bpmn/process", {
+    const response = await fetch("/api/bpmn/process_bpmn", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

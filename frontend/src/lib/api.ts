@@ -168,6 +168,15 @@ export const chatApi = {
       request_id: requestId || `req_${Date.now()}`
     })
     return response.data
+  },
+  
+  generateRecommendations: async (piperflow: string, currentProcess: string, businessRequirements?: string): Promise<string> => {
+    const response = await api.post('/api/bpmn/recommendations', {
+      piperflow_text: piperflow,
+      current_process: currentProcess,
+      business_requirements: businessRequirements || "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
+    })
+    return response.data.recommendations
   }
 }
 

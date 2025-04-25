@@ -1,12 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import processpiper
 from processpiper.text2diagram import render
 import os
-from api import call_deepseek_api
+from .api import call_deepseek_api
 
-app = FastAPI(title="BPMN Agent Service")
+router = APIRouter()
 
 class BPMNRequest(BaseModel):
     user_prompt: str
@@ -255,7 +255,7 @@ def create_diagram(piperflow_text: str) -> tuple[str, str]:
     except Exception as e:
         return "error", str(e)
 
-@app.post("/process_bpmn", response_model=BPMNResponse)
+@router.post("/process_bpmn", response_model=BPMNResponse)
 async def process_bpmn(request: BPMNRequest):
     # Validate if request is BPMN-related
     if not validate_bpmn_request(request.user_prompt):
@@ -307,10 +307,36 @@ async def process_bpmn(request: BPMNRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
+class RecommendationRequest(BaseModel):
+    piperflow_text: str
+    current_process: str
+    business_requirements: Optional[str] = "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
+
+class RecommendationResponse(BaseModel):
+    status: str
+    recommendations: str
+    error: Optional[str] = None
+
+@router.post("/recommendations", response_model=RecommendationResponse)
+async def generate_recommendations(request: RecommendationRequest):
+    try:
+        recommendations = recs_generation(
+            piperflow=request.piperflow_text,
+            current_process=request.current_process,
+            buisness=request.business_requirements
+        )
+        
+        return RecommendationResponse(
+            status="success",
+            recommendations=recommendations
+        )
+    except Exception as e:
+        return RecommendationResponse(
+            status="error",
+            recommendations="",
+            error=str(e)
+        )
+
+@router.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7777)

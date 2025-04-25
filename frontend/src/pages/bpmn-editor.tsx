@@ -237,6 +237,7 @@ pool: Process
           <BpmnEditor 
             initialDiagram={bpmnXml} 
             onSave={handleSave}
+            piperflowText={piperflowText ? atob(piperflowText) : undefined}
           />
         ) : imageData ? (
           <div className="h-full flex flex-col items-center justify-center p-4">

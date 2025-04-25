@@ -3,8 +3,12 @@ import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import { Button } from "@/components/ui/button";
-import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, Image, FileText, Share2 } from "lucide-react";
+import { Download, Save, Undo, Redo, ZoomIn, ZoomOut, Maximize, Minimize, RefreshCw, Image, FileText, Share2, Lightbulb } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { chatApi } from "@/lib/api";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Empty diagram template
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
@@ -21,18 +25,218 @@ const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmndi:BPMNDiagram>
 </bpmn2:definitions>`;
 
+// RecommendationsPanel component
+interface RecommendationPanelProps {
+  piperflowText: string;
+  currentProcess: string;
+  onApplyRecommendations: (recommendations: string) => void;
+}
+
+function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommendations }: RecommendationPanelProps) {
+  const [recommendations, setRecommendations] = useState<string>("");
+  const [recommendationItems, setRecommendationItems] = useState<{id: number, text: string, selected: boolean}[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
+
+  const fetchRecommendations = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const recsText = await chatApi.generateRecommendations(piperflowText, currentProcess);
+      setRecommendations(recsText);
+      
+      // Split recommendations into separate items
+      const items = recsText.split(/\d+\./)
+        .filter(item => item.trim().length > 0)
+        .map((item, index) => ({
+          id: index,
+          text: item.trim(),
+          selected: true
+        }));
+      
+      setRecommendationItems(items);
+      setIsOpen(true);
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+      let errorMessage = 'Не удалось получить рекомендации';
+      
+      // Проверяем на ошибки CORS
+      if (err.message && (
+          err.message.includes('CORS') || 
+          err.message.includes('Cross-Origin') ||
+          err.message.includes('Network Error')
+        )) {
+        errorMessage = 'Ошибка доступа к серверу рекомендаций. Проверьте, что CORS разрешен на порту 7777.';
+      }
+      
+      setError(errorMessage);
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleRecommendation = (id: number) => {
+    setRecommendationItems(prevItems => 
+      prevItems.map(item => 
+        item.id === id ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const applySelectedRecommendations = () => {
+    const selectedRecs = recommendationItems
+      .filter(item => item.selected)
+      .map((item, index) => `${index + 1}. ${item.text}`)
+      .join('\n');
+    
+    if (selectedRecs) {
+      onApplyRecommendations(selectedRecs);
+      toast({
+        title: "Рекомендации применены",
+        description: "Выбранные рекомендации будут применены к диаграмме"
+      });
+    } else {
+      toast({
+        title: "Внимание",
+        description: "Не выбрано ни одной рекомендации",
+        variant: "warning"
+      });
+    }
+  };
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 z-10">
+      {!isOpen ? (
+        <div className="flex justify-center mb-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="secondary" 
+                  className="rounded-full" 
+                  size="icon"
+                  onClick={fetchRecommendations}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Lightbulb className="h-5 w-5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Получить рекомендации по улучшению диаграммы</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      ) : (
+        <div className="bg-background/95 backdrop-blur-sm border-t shadow-lg p-4 transition-all">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Lightbulb className="h-5 w-5 text-yellow-500" />
+              Рекомендации по улучшению диаграммы
+            </h3>
+            <Button variant="outline" size="sm" onClick={() => setIsOpen(false)}>
+              Скрыть
+            </Button>
+          </div>
+          
+          <div className="max-h-[300px] overflow-y-auto pr-2 mb-4">
+            {recommendationItems.length > 0 ? (
+              <div className="space-y-3">
+                {recommendationItems.map((item) => (
+                  <div 
+                    key={item.id} 
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                      item.selected ? 'border-primary/30 bg-primary/5' : 'border-muted bg-background'
+                    }`}
+                  >
+                    <Checkbox 
+                      id={`rec-${item.id}`} 
+                      checked={item.selected}
+                      onCheckedChange={() => toggleRecommendation(item.id)}
+                      className="mt-1"
+                    />
+                    <label 
+                      htmlFor={`rec-${item.id}`} 
+                      className="text-sm flex-1 cursor-pointer"
+                    >
+                      {item.text}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-destructive p-3 border border-destructive/20 rounded-lg bg-destructive/5">
+                {error}
+              </div>
+            ) : (
+              <div className="flex justify-center p-4">
+                <span className="text-muted-foreground">Загрузка рекомендаций...</span>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-muted-foreground">
+              <Badge variant="outline" className="mr-2">
+                {recommendationItems.filter(item => item.selected).length} из {recommendationItems.length} выбрано
+              </Badge>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setRecommendationItems(items => items.map(item => ({ ...item, selected: true })))}
+              >
+                Выбрать все
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setRecommendationItems(items => items.map(item => ({ ...item, selected: false })))}
+              >
+                Сбросить все
+              </Button>
+              <Button 
+                variant="default" 
+                onClick={applySelectedRecommendations} 
+                disabled={recommendationItems.filter(item => item.selected).length === 0}
+              >
+                Применить выбранные
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface BpmnEditorProps {
   initialDiagram?: string;
   readOnly?: boolean;
   onSave?: (xml: string) => void;
   fallbackImage?: string | null;
+  piperflowText?: string;
 }
 
 export function BpmnEditor({ 
   initialDiagram, 
   readOnly = false, 
   onSave,
-  fallbackImage
+  fallbackImage,
+  piperflowText = ""
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<any>(null);
@@ -440,124 +644,90 @@ export function BpmnEditor({
 
   // Render diagram container with loading state
   return (
-    <div className={`relative w-full h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}>
-      {/* Toolbar */}
-      <div className="absolute top-4 left-4 z-10 flex gap-2 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-sm">
-        {!readOnly && (
-          <>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={saveDiagram}
-              title="Сохранить"
-            >
-              <Save className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={undo}
-              title="Отменить"
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={redo}
-              title="Повторить"
-            >
-              <Redo className="h-4 w-4" />
-            </Button>
-            <div className="w-px h-6 bg-gray-200 mx-1" />
-          </>
-        )}
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={zoomIn}
-          title="Приблизить"
-        >
+    <div className={`relative h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''}`}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <span className="mt-4 text-muted-foreground">Загрузка редактора...</span>
+          </div>
+        </div>
+      )}
+      
+      {error && !useFallbackImage && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+          <div className="max-w-md p-6 bg-card shadow-lg rounded-lg border">
+            <h3 className="text-lg font-semibold text-destructive mb-2">Ошибка загрузки редактора</h3>
+            <p className="text-muted-foreground mb-4">{error}</p>
+            <Button onClick={importDiagram}>Попробовать снова</Button>
+          </div>
+        </div>
+      )}
+      
+      <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap gap-2 bg-background/70 backdrop-blur-sm p-2 rounded-lg shadow-sm">
+        <Button variant="outline" size="icon" onClick={undo} title="Отменить">
+          <Undo className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="icon" onClick={redo} title="Повторить">
+          <Redo className="h-4 w-4" />
+        </Button>
+        <div className="h-6 border-l mx-1"></div>
+        <Button variant="outline" size="icon" onClick={zoomIn} title="Увеличить">
           <ZoomIn className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={zoomOut}
-          title="Отдалить"
-        >
+        <Button variant="outline" size="icon" onClick={zoomOut} title="Уменьшить">
           <ZoomOut className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={resetZoom}
-          title="Сбросить масштаб"
-        >
+        <Button variant="outline" size="icon" onClick={resetZoom} title="Масштаб по размеру">
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "Выйти из полноэкранного режима" : "На весь экран"}
-        >
-          {isFullscreen ? (
-            <Minimize className="h-4 w-4" />
-          ) : (
-            <Maximize className="h-4 w-4" />
-          )}
+        <div className="h-6 border-l mx-1"></div>
+        <Button variant="outline" size="icon" onClick={toggleFullscreen} title="Полноэкранный режим">
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
-        <div className="w-px h-6 bg-gray-200 mx-1" />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={exportAsImage}
-          title="Экспортировать как изображение"
-        >
+        <div className="h-6 border-l mx-1"></div>
+        <Button variant="outline" size="icon" onClick={exportAsImage} title="Экспорт как изображение">
           <Image className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={exportAsPiperFlow}
-          title="Экспортировать как PiperFlow"
-        >
+        <Button variant="outline" size="icon" onClick={exportAsBpmn} title="Экспорт BPMN">
           <FileText className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={exportAsBpmn}
-          title="Экспортировать как BPMN"
-        >
-          <Share2 className="h-4 w-4" />
-        </Button>
+        {!readOnly && (
+          <Button variant="outline" size="icon" onClick={saveDiagram} title="Сохранить">
+            <Save className="h-4 w-4" />
+          </Button>
+        )}
       </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-          <div className="text-red-500">{error}</div>
-        </div>
-      )}
-
-      {/* Loading indicator */}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        </div>
-      )}
-
-      {/* Fallback image */}
+      
       {useFallbackImage && fallbackImage ? (
-        <img 
-          src={fallbackImage} 
-          alt="Diagram fallback" 
-          className="w-full h-full object-contain"
-        />
+        <div className="h-full flex flex-col items-center justify-center p-4">
+          <p className="mb-4 text-muted-foreground">
+            Используется статическое изображение, так как не удалось загрузить редактор:
+          </p>
+          <img 
+            src={fallbackImage} 
+            alt="BPMN diagram" 
+            className="max-w-full max-h-[80vh] object-contain border rounded-lg shadow-sm" 
+          />
+        </div>
       ) : (
-        <div ref={containerRef} className="w-full h-full" />
+        <div ref={containerRef} className="h-full" />
+      )}
+      
+      {!useFallbackImage && piperflowText && (
+        <RecommendationsPanel 
+          piperflowText={piperflowText}
+          currentProcess="Текущий бизнес-процесс"
+          onApplyRecommendations={(recs) => {
+            toast({
+              title: "Рекомендации будут применены",
+              description: "Диаграмма будет обновлена согласно рекомендациям"
+            });
+            
+            // Here you would call the API to update the diagram with recommendations
+            console.log("Applying recommendations:", recs);
+          }}
+        />
       )}
     </div>
   );
