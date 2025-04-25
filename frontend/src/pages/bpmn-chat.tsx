@@ -168,7 +168,6 @@ export function BpmnChat() {
               
               // Сохраняем рекомендации, если они есть
               if (bpmnResult.recommendations) {
-                response += "\n\nРекомендации по улучшению диаграммы прикреплены ниже.";
                 recommendations = bpmnResult.recommendations;
               }
               
