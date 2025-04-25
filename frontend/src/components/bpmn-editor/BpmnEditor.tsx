@@ -154,9 +154,9 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-40">
+    <div className="absolute right-6 bottom-6 z-40" style={{ maxWidth: isOpen ? "500px" : "auto" }}>
       {!isOpen ? (
-        <div className="flex justify-end mr-6 mb-6">
+        <div>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -188,18 +188,18 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
           </TooltipProvider>
         </div>
       ) : (
-        <div className="recommendations-panel-slide-up bg-background/95 backdrop-blur-sm border-t shadow-lg p-4 transition-all">
-          <div className="flex justify-between items-center mb-4">
+        <div className="recommendations-panel-slide-up rounded-lg border overflow-hidden bg-background shadow-lg">
+          <div className="flex justify-between items-center p-3 border-b bg-muted/50">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Lightbulb className="h-5 w-5 text-yellow-500" />
-              Рекомендации по улучшению диаграммы
+              Рекомендации
             </h3>
             <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="close-btn">
               <X className="h-4 w-4" />
             </Button>
           </div>
           
-          <div className="max-h-[300px] overflow-y-auto pr-2 mb-4">
+          <div className="p-4 max-h-[300px] overflow-y-auto">
             {recommendationItems.length > 0 ? (
               <div className="space-y-3">
                 {recommendationItems.map((item) => (
@@ -235,7 +235,7 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
             )}
           </div>
           
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center p-3 border-t bg-muted/50">
             <div className="text-sm text-muted-foreground">
               <Badge variant="outline" className="mr-2">
                 {recommendationItems.filter(item => item.selected).length} из {recommendationItems.length} выбрано
@@ -634,7 +634,7 @@ export function BpmnEditor({
         </div>
       )}
       
-      <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap gap-2 bg-background/70 backdrop-blur-sm p-2 rounded-lg shadow-sm">
+      <div className="absolute top-4 left-4 right-4 z-50 flex flex-wrap gap-2 bg-background/70 backdrop-blur-sm p-2 rounded-lg shadow-sm">
         <Button variant="outline" size="icon" onClick={undo} title="Отменить">
           <Undo className="h-4 w-4" />
         </Button>
@@ -666,7 +666,7 @@ export function BpmnEditor({
         )}
       </div>
       
-      <div ref={containerRef} className="h-full bpmn-container" />
+      <div ref={containerRef} className="h-full bpmn-container pt-16" />
       
       <RecommendationsPanel 
         piperflowText={piperflowText}
