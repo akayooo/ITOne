@@ -4,10 +4,10 @@ import requests
 from typing import Union, Tuple, List, Optional 
 import logging
 
-# Configure logging
+
 logging = logging.getLogger(__name__)
 
-# --- Конфигурация ---
+
 CHUTES_API_URL = "https://llm.chutes.ai/v1/chat/completions"
 my_api_key = 'cpk_b9f646794b554414935934ec5a3513de.f78245306f06593ea49ef7bce2228c8e.kHJVJjyK8dtqB0oD2Ofv4AaME6MSnKDy'
 
