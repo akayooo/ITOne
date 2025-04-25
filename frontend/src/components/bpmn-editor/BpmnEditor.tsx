@@ -9,6 +9,7 @@ import { chatApi } from "@/lib/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { convertPiperflowToBpmn } from "@/lib/bpmn-service";
 
 // Добавляем CSS для скрытия логотипа BPMN.io
 import './bpmn-editor.css';
@@ -48,43 +49,90 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
   useEffect(() => {
     console.log("RecommendationsPanel mounted");
     console.log("initialRecommendations:", initialRecommendations);
-    console.log("piperflowText:", piperflowText);
-    console.log("currentProcess:", currentProcess);
+    console.log("piperflowText length:", piperflowText?.length || 0);
     
     // Process initial recommendations if available
     if (initialRecommendations) {
       console.log("Processing initial recommendations");
       processRecommendations(initialRecommendations);
-    } else {
-      console.log("No initial recommendations, fetching from API");
+    } else if (piperflowText && piperflowText.length > 0) {
+      console.log("No initial recommendations, but piperflow available - fetching from API");
       // Автоматически получаем рекомендации, если их нет
       fetchRecommendations();
     }
-  }, [initialRecommendations, piperflowText]);
+  }, []);
+  
+  // When piperflow changes, we might need to update recommendations
+  useEffect(() => {
+    if (piperflowText && piperflowText.length > 0 && !recommendations && !isLoading) {
+      console.log("PiperFlow changed, fetching new recommendations");
+      fetchRecommendations();
+    }
+  }, [piperflowText]);
 
   // Выделяем обработку рекомендаций в отдельную функцию
   const processRecommendations = (recsText: string) => {
     console.log("Processing recommendations text:", recsText);
     
-    // Split recommendations into separate items
-    const items = recsText.split(/\d+\./)
-      .filter(item => item.trim().length > 0)
-      .map((item, index) => ({
-        id: index,
-        text: item.trim(),
-        selected: true
-      }));
+    if (!recsText || recsText.trim().length === 0) {
+      console.warn("Empty recommendations text provided");
+      setRecommendationItems([]);
+      return;
+    }
     
-    console.log("Parsed recommendation items:", items);
-    setRecommendationItems(items);
-    setRecommendations(recsText);
+    // Try to split by numbered items pattern
+    try {
+      // Split recommendations into separate items
+      const items = recsText.split(/\d+\./)
+        .filter(item => item.trim().length > 0)
+        .map((item, index) => ({
+          id: index,
+          text: item.trim(),
+          selected: true
+        }));
+      
+      if (items.length === 0) {
+        // If regular splitting didn't work, try line by line
+        const lineItems = recsText.split('\n')
+          .filter(line => line.trim().length > 0)
+          .map((line, index) => ({
+            id: index,
+            text: line.trim(),
+            selected: true
+          }));
+        
+        console.log("Using line-by-line parsing for recommendations, found:", lineItems.length);
+        setRecommendationItems(lineItems);
+      } else {
+        console.log("Parsed recommendation items:", items.length);
+        setRecommendationItems(items);
+      }
+      
+      setRecommendations(recsText);
+    } catch (err) {
+      console.error("Error processing recommendations:", err);
+      // Fallback - treat the whole text as one recommendation
+      setRecommendationItems([{
+        id: 0,
+        text: recsText.trim(),
+        selected: true
+      }]);
+      setRecommendations(recsText);
+    }
   };
 
   const fetchRecommendations = async () => {
     // Если рекомендации уже есть, используем их
-    if (recommendations) {
+    if (recommendations && recommendations.length > 0) {
       console.log("Already have recommendations, using existing ones");
       setIsOpen(true);
+      return;
+    }
+    
+    // Проверяем, есть ли текст для генерации рекомендаций
+    if (!piperflowText || piperflowText.length === 0) {
+      console.warn("No piperflow text available for recommendations");
+      setError("Нет данных для генерации рекомендаций");
       return;
     }
 
@@ -93,9 +141,19 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
     setError(null);
     
     try {
-      console.log("Calling API with:", { piperflowText, currentProcess });
-      const recsText = await chatApi.generateRecommendations(piperflowText, currentProcess);
-      console.log("Received recommendations:", recsText);
+      console.log("Calling API with piperflow text length:", piperflowText.length);
+      const recsText = await chatApi.generateRecommendations(
+        piperflowText, 
+        currentProcess || "Current process"
+      );
+      
+      console.log("Received recommendations, length:", recsText?.length || 0);
+      
+      if (!recsText || recsText.trim().length === 0) {
+        setError("Получены пустые рекомендации");
+        setIsLoading(false);
+        return;
+      }
       
       // Обрабатываем полученные рекомендации
       processRecommendations(recsText);
@@ -138,12 +196,43 @@ function RecommendationsPanel({ piperflowText, currentProcess, onApplyRecommenda
       .map((item, index) => `${index + 1}. ${item.text}`)
       .join('\n');
     
-    if (selectedRecs) {
-      onApplyRecommendations(selectedRecs);
-      toast({
-        title: "Рекомендации применены",
-        description: "Выбранные рекомендации будут применены к диаграмме"
-      });
+    if (selectedRecs && selectedRecs.trim().length > 0) {
+      setIsLoading(true);
+      
+      console.log("Applying recommendations:", selectedRecs);
+      console.log("PiperFlow length:", piperflowText?.length || 0);
+      
+      chatApi.applyRecommendations(piperflowText, selectedRecs)
+        .then(result => {
+          if (result.success && result.updated_piperflow) {
+            console.log("Successfully applied recommendations");
+            console.log("Updated piperflow length:", result.updated_piperflow.length);
+            
+            // Pass the updated piperflow to the parent component
+            onApplyRecommendations(result.updated_piperflow);
+            
+            toast({
+              title: "Рекомендации применены",
+              description: "Выбранные рекомендации успешно применены к диаграмме"
+            });
+            
+            // Close the panel after successful application
+            setIsOpen(false);
+          } else {
+            throw new Error(result.error || "Не удалось применить рекомендации");
+          }
+        })
+        .catch(err => {
+          console.error("Error applying recommendations:", err);
+          toast({
+            title: "Ошибка",
+            description: err.message || "Произошла ошибка при применении рекомендаций",
+            variant: "destructive"
+          });
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
     } else {
       toast({
         title: "Внимание",
@@ -321,6 +410,7 @@ export function BpmnEditor({
   const [xml, setXml] = useState<string>(initialDiagram || EMPTY_DIAGRAM);
   const [scale, setScale] = useState(1);
   const [currentProcess, setCurrentProcess] = useState(extractProcessDescription(piperflowText));
+  const [currentPiperflowText, setPiperflowText] = useState(piperflowText);
   
   // Тестовые рекомендации для отладки (если настоящие недоступны)
   const testRecommendations = "1. Рекомендуется разделить большие блоки на более мелкие для улучшения читаемости.\n2. Добавьте более подробные описания к действиям.\n3. Используйте цветовые обозначения для разделения функциональных блоков.";
@@ -351,10 +441,10 @@ export function BpmnEditor({
     return `${title}${footer ? `: ${footer}` : ""}`;
   }
 
-  // Handle initialization and cleanup
+  // Initial setup effects
   useEffect(() => {
     if (!containerRef.current) return;
-
+    
     console.log('BpmnEditor: Initializing modeler');
     try {
       const container = containerRef.current;
@@ -399,7 +489,7 @@ export function BpmnEditor({
 
       // Ensure the container is visible before importing
       setTimeout(() => {
-        importDiagram();
+        importDiagram(initialDiagram || EMPTY_DIAGRAM);
       }, 100);
     } catch (err) {
       console.error('Error initializing BPMN modeler:', err);
@@ -407,7 +497,13 @@ export function BpmnEditor({
       setIsLoading(false);
     }
 
+    // Set up window resize listener
+    window.addEventListener('resize', updateSize);
+    updateSize();
+    
+    // Clean up on unmount
     return () => {
+      window.removeEventListener('resize', updateSize);
       if (modelerRef.current) {
         try {
           modelerRef.current.destroy();
@@ -419,18 +515,16 @@ export function BpmnEditor({
     };
   }, []);
 
-  const importDiagram = () => {
+  const importDiagram = (xmlToImport: string = EMPTY_DIAGRAM) => {
     if (!modelerRef.current) {
       console.warn('Modeler not initialized');
       setError('Editor not initialized properly');
       setIsLoading(false);
       return;
     }
-
+    
     setIsLoading(true);
     setError(null);
-
-    const xmlToImport = initialDiagram || EMPTY_DIAGRAM;
     
     try {
       console.log('BpmnEditor: Importing diagram');
@@ -751,6 +845,73 @@ export function BpmnEditor({
     }
   };
 
+  // Handle recommendations being applied
+  const handleApplyRecommendations = (updatedPiperflow: string) => {
+    // Set the updated piperflow text
+    setPiperflowText(updatedPiperflow);
+    
+    try {
+      console.log("Applying updated piperflow, length:", updatedPiperflow?.length || 0);
+      
+      // Convert updated piperflow to BPMN XML
+      const updatedXml = convertPiperflowToBpmn(updatedPiperflow);
+      console.log("Generated XML, length:", updatedXml?.length || 0);
+      
+      // Update the diagram with the new XML
+      importDiagram(updatedXml);
+      
+      toast({
+        title: "Диаграмма обновлена",
+        description: "Диаграмма успешно обновлена с учетом рекомендаций"
+      });
+    } catch (error) {
+      console.error('Error updating diagram with recommendations:', error);
+      
+      // Fallback: Try to use the XML from the API response directly
+      chatApi.generateBpmnDiagram("Обновить диаграмму с рекомендациями")
+        .then(result => {
+          if (result.success && result.text) {
+            setPiperflowText(result.text);
+            
+            try {
+              const xml = convertPiperflowToBpmn(result.text);
+              importDiagram(xml);
+              
+              toast({
+                title: "Диаграмма обновлена",
+                description: "Диаграмма успешно обновлена с использованием API"
+              });
+            } catch (err) {
+              console.error("Error converting piperflow from API:", err);
+              toast({
+                title: "Ошибка обновления",
+                description: "Не удалось конвертировать piperflow из API",
+                variant: "destructive"
+              });
+            }
+          } else {
+            throw new Error("API response did not contain valid piperflow");
+          }
+        })
+        .catch(err => {
+          console.error("Error in fallback diagram update:", err);
+          toast({
+            title: "Ошибка обновления",
+            description: "Не удалось обновить диаграмму с новыми рекомендациями",
+            variant: "destructive"
+          });
+        });
+    }
+  };
+
+  // Extract process description from piperflow text
+  useEffect(() => {
+    if (piperflowText) {
+      setCurrentProcess(extractProcessDescription(piperflowText));
+      setPiperflowText(piperflowText);
+    }
+  }, [piperflowText]);
+
   // Render diagram container with loading state
   return (
     <div className={`relative h-full flex flex-col ${isFullscreen ? 'fixed inset-0 z-20 bg-background' : ''}`}>
@@ -812,18 +973,10 @@ export function BpmnEditor({
       </div>
       
       <RecommendationsPanel 
-        piperflowText={piperflowText}
+        piperflowText={currentPiperflowText}
         currentProcess={currentProcess}
-        onApplyRecommendations={(recs) => {
-          toast({
-            title: "Рекомендации будут применены",
-            description: "Диаграмма будет обновлена согласно рекомендациям"
-          });
-          
-          // Here you would call the API to update the diagram with recommendations
-          console.log("Applying recommendations:", recs);
-        }}
-        initialRecommendations={initialRecommendations || testRecommendations}
+        onApplyRecommendations={handleApplyRecommendations}
+        initialRecommendations={initialRecommendations}
       />
     </div>
   );

@@ -191,6 +191,33 @@ export const chatApi = {
       business_requirements: businessRequirements || "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
     })
     return response.data.recommendations
+  },
+  
+  applyRecommendations: async (piperflow: string, recommendations: string, businessRequirements?: string): Promise<{
+    success: boolean;
+    updated_piperflow?: string;
+    xml?: string;
+    error?: string;
+  }> => {
+    try {
+      const response = await api.post('/api/bpmn/apply_recommendations', {
+        piperflow_text: piperflow,
+        recommendations: recommendations,
+        business_requirements: businessRequirements || "1. Схема должна быть грамотная и удобная для чтения. 2. Если возможно какой-то комплексный блок разбить на меньшие блоки - сделай это"
+      });
+      
+      return {
+        success: true,
+        updated_piperflow: response.data.piperflow_text,
+        xml: response.data.xml
+      };
+    } catch (error: any) {
+      console.error("Error applying recommendations:", error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || "Ошибка при применении рекомендаций"
+      };
+    }
   }
 }
 
